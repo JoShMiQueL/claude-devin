@@ -50,9 +50,11 @@ itself is installed on first use via `claude-devin install-claude` (or
 | `claude-devin logout` | Remove stored credentials. |
 | `claude-devin <anything else>` | Forwarded to `claude` verbatim. |
 
-Pick a model with `ANTHROPIC_MODEL` (e.g. `swe-2-high`, `glm-5-3-high`,
-`claude-opus-5-5-high` — run `claude-devin models` for the full list of the
-~140 your account exposes).
+The default model is **`swe-2-high`**. Override it per-run with claude's own
+`--model` flag, or for all runs with `ANTHROPIC_MODEL` / `ANTHROPIC_DEFAULT_MODEL`
+(e.g. `glm-5-3-high`, `claude-opus-5-5-high` — run `claude-devin models` for
+the ~140 IDs your account exposes). Interactive `/model` inside claude
+discovers the same list straight from the proxy.
 
 ### `--fast` mode
 

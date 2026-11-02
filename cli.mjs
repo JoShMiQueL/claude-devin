@@ -276,6 +276,18 @@ async function cmdRun(claudeArgs) {
     ANTHROPIC_BASE_URL: proxyBase() + (fast ? "/fast" : ""),
     ANTHROPIC_API_KEY: CLIENT_KEY,
     ANTHROPIC_AUTH_TOKEN: CLIENT_KEY,
+    // Devin model by default — --model / ANTHROPIC_MODEL / settings still win.
+    ANTHROPIC_DEFAULT_MODEL: process.env.ANTHROPIC_DEFAULT_MODEL ?? "swe-2-high",
+    // Our proxy can't serve server-side auto-mode classifier checks — tell
+    // claude to use its own (billed) classifier instead of warning about it.
+    CLAUDE_CODE_AUTO_MODE_SERVER: process.env.CLAUDE_CODE_AUTO_MODE_SERVER ?? "0",
+    // Claude Code doesn't know Devin model IDs; declare the real window so it
+    // stops warning "context assumed to be 200k" (swe-2-high is ~200k anyway).
+    CLAUDE_CODE_MAX_CONTEXT_TOKENS:
+      process.env.CLAUDE_CODE_MAX_CONTEXT_TOKENS ?? "200000",
+    // Let `claude /model` discover the ~140 models our proxy exposes.
+    CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY:
+      process.env.CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY ?? "1",
   }
   const claude = spawn("claude", args, { stdio: "inherit", env })
   shuttingDown = false
