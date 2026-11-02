@@ -10,6 +10,24 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # GitFlow gate: main only accepts merges from hotfix/*, release/*, or
+  # develop. Feature/fix/chore branches must target develop first. This is a
+  # required check, so a PR to main from a feature branch simply can't merge.
+  branch-gate:
+    if: github.event_name == 'pull_request' && github.base_ref == 'main'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Enforce source branch
+        run: |
+          head="${{ github.head_ref }}"
+          case "$head" in
+            hotfix/*|release/*|release-please--*|develop)
+              echo "OK: $head may merge to main" ;;
+            *)
+              echo "::error::Branch '$head' cannot merge into main. GitFlow: merge feat/fix/chore work into 'develop' first, then release-please/hotfix branches into main."
+              exit 1 ;;
+          esac
+
   verify:
     runs-on: ubuntu-latest
     steps:

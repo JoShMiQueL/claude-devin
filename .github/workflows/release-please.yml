@@ -1,0 +1,23 @@
+name: release-please
+
+# Runs on every push to main. When conventional-commit history has changed,
+# it opens/updates a `release/X.Y.Z` PR into main with a version bump +
+# generated CHANGELOG. Merging that PR creates the tag + GitHub Release.
+# Hotfixes and releases both flow through this — the release PR itself is a
+# `release/*` branch, which the CI branch-gate already allows into main.
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7  # v5.0.0
+        with:
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
