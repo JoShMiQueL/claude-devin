@@ -79,6 +79,7 @@ Everything else is forwarded to \`claude\` verbatim — including claude's own
   claude-devin --model swe-2-high      → claude --model swe-2-high
   claude-devin --model glm-5-3-high -p "hi"
   --fast              Shorter answers: strips web/plan/subagent tools, terser style.
+  --shell S           Shell for claude's tools: bash | powershell | auto (default auto).
 
 Environment:
   DEVIN_LLM_API_KEY   Devin session token (overrides the stored credential).
@@ -432,9 +433,14 @@ async function cmdRun(claudeArgs) {
   await ensureProxy()
   maybeNotifyUpdate() // fire-and-forget, cached 24h
 
-  // `--fast` is claude-devin's own flag — strip it before forwarding args.
+  // claude-devin's own flags — stripped before forwarding to claude.
   const fast = claudeArgs.includes("--fast")
-  const args = fast ? claudeArgs.filter((a) => a !== "--fast") : claudeArgs
+  const shellIdx = claudeArgs.indexOf("--shell")
+  const shellArg = shellIdx >= 0 ? claudeArgs[shellIdx + 1] : null
+  const args = claudeArgs.filter((a, i) => a !== "--fast" && i !== shellIdx && i !== shellIdx + 1)
+  if (shellIdx >= 0 && !["bash", "powershell", "pwsh", "auto"].includes(shellArg ?? "")) {
+    fail(`--shell expects bash|powershell|auto, got '${shellArg ?? "(missing)"}'`)
+  }
 
   // Session marker in the proxy log — lets `service logs` (and bug reports)
   // be split by invocation: each run leaves one `session s...` line with
@@ -486,6 +492,29 @@ async function cmdRun(claudeArgs) {
     CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY:
       process.env.CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY ?? "1",
   }
+
+  // --shell bash|powershell|auto: pick the shell claude's tools run under.
+  // `auto` (default) leaves claude's own detection alone. On Windows, `bash`
+  // also puts Git's bin dir on PATH so `bash`/`sh` resolve even when Git
+  // wasn't installed system-wide on PATH.
+  if (shellArg === "bash" || shellArg === "sh") {
+    const gitBins = [
+      process.env.GIT_BASH_PATH,
+      "C:/Program Files/Git/bin",
+      "C:/Program Files (x86)/Git/bin",
+    ].filter(Boolean)
+    const gitBin = gitBins.find((d) => existsSync(join(d, "bash.exe")))
+    if (gitBin) env.PATH = `${gitBin};${env.PATH ?? env.Path ?? ""}`
+    env.SHELL = gitBin ? join(gitBin, "bash.exe") : "bash"
+    env.CLAUDE_CODE_GIT_BASH_PATH = env.SHELL // honored by claude on win32
+  } else if (shellArg === "powershell" || shellArg === "pwsh") {
+    const ps = commandExists("pwsh") ? "pwsh.exe" : "powershell.exe"
+    env.SHELL = ps
+    delete env.CLAUDE_CODE_GIT_BASH_PATH
+  } else if (shellArg === "auto") {
+    delete env.SHELL
+  }
+
   const claude = spawn("claude", args, { stdio: "inherit", env })
   const startedAt = Date.now()
   const code = await new Promise((r) => claude.on("exit", r))
