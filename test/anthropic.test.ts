@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, test } from "bun:test"
+﻿import { afterEach, describe, expect, test } from "bun:test"
 
 import {
   __setStreamChatEventsForTest,
@@ -11,8 +11,8 @@ import {
   streamChatEventsAsAnthropic,
   type AnthropicRequest,
   type AnthropicSseEvent,
-} from "../../src/devin-anthropic-proxy/anthropic.ts"
-import type { ChatEvent, StreamChatRequest } from "../../src/protocol/chat.ts"
+} from "../src/devin-anthropic-proxy/anthropic.ts"
+import type { ChatEvent, StreamChatRequest } from "../src/protocol/chat.ts"
 
 const chatRequest: StreamChatRequest = { apiKey: "k", modelUid: "claude-test", messages: [] }
 

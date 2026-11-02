@@ -1,13 +1,13 @@
-import { afterAll, afterEach, beforeAll, describe, expect, test } from "bun:test"
+﻿import { afterAll, afterEach, beforeAll, describe, expect, test } from "bun:test"
 import { mkdtempSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import type { Server } from "node:http"
 
-import { clearCachedUserJwt } from "../../src/protocol/auth.ts"
-import { createServer } from "../../src/devin-anthropic-proxy/server.ts"
-import { LOCAL_CLIENT_KEY } from "../../src/devin-anthropic-proxy/auth.ts"
-import { catalogReply, modelConfig, realFetch, stubFetch } from "../helpers.ts"
+import { clearCachedUserJwt } from "../src/protocol/auth.ts"
+import { createServer } from "../src/devin-anthropic-proxy/server.ts"
+import { LOCAL_CLIENT_KEY } from "../src/devin-anthropic-proxy/auth.ts"
+import { catalogReply, modelConfig, realFetch, stubFetch } from "./helpers.ts"
 
 /**
  * Boots the real HTTP server on an ephemeral port. Network access to Cognition
@@ -63,7 +63,7 @@ describe("proxy server", () => {
     expect(body.status).toBe("ok")
   })
 
-  test("GET /v1/models without the client key → 401 authentication_error", async () => {
+  test("GET /v1/models without the client key â†’ 401 authentication_error", async () => {
     const res = await req("/v1/models")
     expect(res.status).toBe(401)
     const body = await json(res)
@@ -71,12 +71,12 @@ describe("proxy server", () => {
     expect(body.error.type).toBe("authentication_error")
   })
 
-  test("GET /v1/models with a wrong client key → 401", async () => {
+  test("GET /v1/models with a wrong client key â†’ 401", async () => {
     const res = await req("/v1/models", { headers: { "x-api-key": "nope" } })
     expect(res.status).toBe(401)
   })
 
-  test("GET /v1/models with client key but no Devin credential → Anthropic error shape or empty list", async () => {
+  test("GET /v1/models with client key but no Devin credential â†’ Anthropic error shape or empty list", async () => {
     // No DEVIN_LLM_API_KEY and no credential file: the catalog call is made
     // with an empty apiKey and the stubbed upstream fails fast, so the proxy
     // degrades to an empty list rather than hanging on the network.
@@ -103,14 +103,14 @@ describe("proxy server", () => {
     expect(body.data.map((m: { id: string }) => m.id)).toEqual(["claude-sonnet-4-5"])
   })
 
-  test("unknown route → 404 not_found_error", async () => {
+  test("unknown route â†’ 404 not_found_error", async () => {
     const res = await req("/v1/nope", { headers: { "x-api-key": LOCAL_CLIENT_KEY } })
     expect(res.status).toBe(404)
     const body = await json(res)
     expect(body.error.type).toBe("not_found_error")
   })
 
-  test("POST /v1/messages with malformed JSON → 400 invalid_request_error", async () => {
+  test("POST /v1/messages with malformed JSON â†’ 400 invalid_request_error", async () => {
     const res = await req("/v1/messages", {
       method: "POST",
       headers: { "x-api-key": LOCAL_CLIENT_KEY, "Content-Type": "application/json" },
@@ -122,7 +122,7 @@ describe("proxy server", () => {
     expect(body.error.type).toBe("invalid_request_error")
   })
 
-  test("POST /v1/messages missing fields → 400 invalid_request_error", async () => {
+  test("POST /v1/messages missing fields â†’ 400 invalid_request_error", async () => {
     for (const bad of [
       { messages: [], max_tokens: 8 }, // no model
       { model: "claude-sonnet-4-5", max_tokens: 8 }, // no messages
@@ -138,7 +138,7 @@ describe("proxy server", () => {
     }
   })
 
-  test("POST /v1/messages without a Devin credential → 401 authentication_error", async () => {
+  test("POST /v1/messages without a Devin credential â†’ 401 authentication_error", async () => {
     const res = await req("/v1/messages", {
       method: "POST",
       headers: { "x-api-key": LOCAL_CLIENT_KEY, "Content-Type": "application/json" },
@@ -148,7 +148,7 @@ describe("proxy server", () => {
     expect((await json(res)).error.type).toBe("authentication_error")
   })
 
-  test("POST /v1/messages unknown model → 400 with the valid ids", async () => {
+  test("POST /v1/messages unknown model â†’ 400 with the valid ids", async () => {
     process.env[ENV_KEY] = "devin-session-token$srv-unknown-model"
     stubFetch({
       catalog: () =>
@@ -179,7 +179,7 @@ describe("proxy server", () => {
     expect(body.input_tokens).toBeGreaterThan(0)
   })
 
-  test("PUT /v1/messages → 405", async () => {
+  test("PUT /v1/messages â†’ 405", async () => {
     const res = await req("/v1/messages", { method: "PUT", headers: { "x-api-key": LOCAL_CLIENT_KEY } })
     expect(res.status).toBe(405)
   })

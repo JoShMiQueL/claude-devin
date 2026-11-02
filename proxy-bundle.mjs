@@ -1,14 +1,14 @@
-// claude-devin/src/devin-anthropic-proxy/server.ts
+// src/devin-anthropic-proxy/server.ts
 import { createServer as httpCreateServer } from "node:http";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
-// claude-devin/src/devin-anthropic-proxy/auth.ts
+// src/devin-anthropic-proxy/auth.ts
 import { chmodSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
-// claude-devin/src/constants.ts
+// src/constants.ts
 var PROVIDER_ID = "devin";
 var LLM_ENV_VAR = "DEVIN_LLM_API_KEY";
 var WEBAPP_URL = "https://app.devin.ai";
@@ -19,7 +19,7 @@ var CALLBACK_PATH = "/callback";
 var CREDENTIAL_TTL_MS = 365 * 24 * 60 * 60 * 1000;
 var DEFAULT_RELEASED_MS = Date.parse("2025-01-01T00:00:00Z");
 
-// claude-devin/src/devin-anthropic-proxy/auth.ts
+// src/devin-anthropic-proxy/auth.ts
 var LOCAL_CLIENT_KEY = "devin-claude-local";
 function configDir() {
   const xdg = process.env.XDG_CONFIG_HOME?.trim();
@@ -74,7 +74,7 @@ function getApiKey() {
   return loadCredentials()?.apiKey ?? null;
 }
 
-// claude-devin/src/protocol/wire.ts
+// src/protocol/wire.ts
 import * as zlib from "node:zlib";
 function encodeVarint(value) {
   let v = BigInt(value);
@@ -171,7 +171,7 @@ function frameConnectStream(body, compress = true) {
   return Buffer.concat([header, payload]);
 }
 
-// claude-devin/src/protocol/metadata.ts
+// src/protocol/metadata.ts
 var VERSION_STRING = "2.0.0";
 function osName() {
   switch (process.platform) {
@@ -208,7 +208,7 @@ function buildMetadata(input) {
   return Buffer.concat(parts);
 }
 
-// claude-devin/src/protocol/auth.ts
+// src/protocol/auth.ts
 var MINT_TIMEOUT_MS = 30000;
 var FALLBACK_JWT_TTL_SECONDS = 600;
 
@@ -295,7 +295,7 @@ function clearCachedUserJwt() {
   cacheEpoch++;
 }
 
-// claude-devin/src/protocol/effort.ts
+// src/protocol/effort.ts
 var EFFORT_LEVELS = ["none", "low", "medium", "high", "xhigh", "max"];
 var EFFORT_SUFFIX = new RegExp(`-(${EFFORT_LEVELS.join("|")})$`);
 function splitEffortSuffix(modelUid) {
@@ -306,7 +306,7 @@ function splitEffortSuffix(modelUid) {
   return { baseModelUid: modelUid.slice(0, -(effortLevel.length + 1)), effortLevel };
 }
 
-// claude-devin/src/protocol/catalog.ts
+// src/protocol/catalog.ts
 var CATALOG_TTL_MS = 10 * 60 * 1000;
 var CATALOG_FETCH_TIMEOUT_MS = 1e4;
 async function fetchCatalog(apiKey, host, signal) {
@@ -446,7 +446,7 @@ async function getCachedCatalog(apiKey, host = DEFAULT_API_SERVER, signal) {
   }
 }
 
-// claude-devin/src/devin-anthropic-proxy/models.ts
+// src/devin-anthropic-proxy/models.ts
 class ModelNotFoundError extends Error {
   validIds;
   constructor(input, validIds) {
@@ -501,7 +501,7 @@ async function resolveModelId(input, apiKey, host) {
   throw new ModelNotFoundError(input, validIds);
 }
 
-// claude-devin/src/protocol/chat.ts
+// src/protocol/chat.ts
 import * as zlib2 from "node:zlib";
 var STREAM_IDLE_MS = 120000;
 var STREAM_TTFB_MS = 60000;
@@ -931,7 +931,7 @@ async function* streamChatEvents(request) {
   }
 }
 
-// claude-devin/src/devin-anthropic-proxy/anthropic.ts
+// src/devin-anthropic-proxy/anthropic.ts
 var streamChatEventsImpl = streamChatEvents;
 var textPart = (text) => ({ type: "text", text });
 function toolResultText(content) {
@@ -1219,7 +1219,7 @@ function countTokens(req) {
   return { input_tokens: Math.ceil(serialized.length / 4) };
 }
 
-// claude-devin/src/devin-anthropic-proxy/server.ts
+// src/devin-anthropic-proxy/server.ts
 var DEFAULT_PORT = 42100;
 var MAX_BODY_BYTES = 32 * 1024 * 1024;
 var errorBody = (type, message) => ({
@@ -1462,12 +1462,12 @@ if (invokedAsScript && true) {
     process.exit(1);
   });
 }
-// claude-devin/src/devin-anthropic-proxy/login.ts
+// src/devin-anthropic-proxy/login.ts
 import { spawn } from "node:child_process";
 import { createServer as createServer2 } from "node:http";
 import { createInterface } from "node:readline";
 
-// claude-devin/src/auth/exchange.ts
+// src/auth/exchange.ts
 class DevinAuthError extends Error {
   status;
   constructor(message, status) {
@@ -1501,7 +1501,7 @@ async function exchangeCode(input) {
   return `${TOKEN_PREFIX}${token}`;
 }
 
-// claude-devin/src/auth/pkce.ts
+// src/auth/pkce.ts
 var encoder = new TextEncoder;
 function base64url(bytes) {
   return Buffer.from(bytes).toString("base64url");
@@ -1522,7 +1522,7 @@ function generateState() {
   return randomToken();
 }
 
-// claude-devin/src/auth/url.ts
+// src/auth/url.ts
 function authorizeUrl(input) {
   const url = new URL("/auth/cli/continue", WEBAPP_URL);
   if (input.redirectUri)
@@ -1534,7 +1534,7 @@ function authorizeUrl(input) {
   return url.toString();
 }
 
-// claude-devin/src/devin-anthropic-proxy/login.ts
+// src/devin-anthropic-proxy/login.ts
 var CALLBACK_TIMEOUT_MS = 5 * 60 * 1000;
 function toStoredCredential(token) {
   return saveCredentials({ apiKey: token, apiServerUrl: undefined });
@@ -1645,7 +1645,7 @@ async function loginManual(readLine) {
   toStoredCredential(token);
   return token;
 }
-// claude-devin/src/devin-anthropic-proxy/bundle-entry.ts
+// src/devin-anthropic-proxy/bundle-entry.ts
 import { resolve as resolve2 } from "node:path";
 import { pathToFileURL as pathToFileURL2 } from "node:url";
 var isMain = typeof process !== "undefined" && !!process.argv[1] && import.meta.url === pathToFileURL2(resolve2(process.argv[1])).href;
