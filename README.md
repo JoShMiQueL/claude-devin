@@ -101,6 +101,22 @@ An update check runs at most once per 24h on launch and prints a one-line
 notice to stderr when a newer release exists — `claude-devin upgrade` then
 pulls it.
 
+## Logging
+
+The service writes `~/.claude-devin/proxy.log` (rotated to `proxy.log.1`
+at ~5 MB on start):
+
+- **Session markers**: every `claude-devin` run logs
+  `session <id> pid=… fast=… args=… v=…` before its traffic, so the log
+  can be split by invocation.
+- **Request IDs**: each request gets `[r<n>]` correlated across its
+  start/finish/upstream-error lines.
+- **Levels**: `DEVIN_CLAUDE_LOG_LEVEL=debug|info|warn|error` (default
+  `info` = startup + abnormal requests + upstream errors; `debug` logs
+  every request).
+- **Tail it** with `claude-devin service logs [N]` — last N lines then
+  follow.
+
 ## Claude Code plugin (optional)
 
 The `claude-devin/` directory is also a valid Claude Code plugin: load it

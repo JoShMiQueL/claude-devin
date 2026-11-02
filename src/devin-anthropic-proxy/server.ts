@@ -52,6 +52,10 @@ export const log = {
   debug: (m: string) => logAt("debug", m),
 }
 
+/** Short request id — correlates request start/finish/upstream-error lines. */
+let reqSeq = 0
+const nextRid = (): string => `r${(++reqSeq).toString(36)}`
+
 type JsonObject = Record<string, unknown>
 
 const errorBody = (type: string, message: string): JsonObject => ({
@@ -126,42 +130,71 @@ export async function createServer(options: ProxyServerOptions = {}): Promise<Pr
     }
   }
 
-  // Per-request line: 5xx/upstream failures are warn-worthy; the rest is debug
-  // noise (health probes from the CLI poll every 250ms on startup).
-  const logRequest = (method: string, path: string, status: number): void => {
-    const line = `${method} ${path} -> ${status}`
+  // Per-request finish line, tagged with the request id so it can be joined
+  // with upstream-error lines: 5xx are warn-worthy; the rest is debug noise
+  // (health probes from the CLI poll every 250ms on startup).
+  const logRequest = (rid: string, method: string, path: string, status: number, ms: number): void => {
+    const line = `${method} ${path} -> ${status} ${ms}ms [${rid}]`
     if (status >= 500) log.warn(line)
     else if (status >= 400 && path !== "/api/hello") log.info(line) // skip claude's probe noise
     else log.debug(line)
   }
 
-  const sendJson = (res: ServerResponse, method: string, path: string, status: number, body: JsonObject): void => {
+  const sendJson = (res: ServerResponse, ctx: { rid: string; method: string; path: string; t0: number }, status: number, body: JsonObject): void => {
     const payload = JSON.stringify(body)
     res.writeHead(status, { "Content-Type": "application/json", "Content-Length": Buffer.byteLength(payload) })
     res.end(payload)
-    logRequest(method, path, status)
+    logRequest(ctx.rid, ctx.method, ctx.path, status, Date.now() - ctx.t0)
   }
 
-  const sendError = (res: ServerResponse, method: string, path: string, status: number, type: string, message: string): void => {
-    sendJson(res, method, path, status, errorBody(type, message))
+  const sendError = (res: ServerResponse, ctx: { rid: string; method: string; path: string; t0: number }, status: number, type: string, message: string): void => {
+    sendJson(res, ctx, status, errorBody(type, message))
   }
 
   const handle = async (req: IncomingMessage, res: ServerResponse): Promise<void> => {
     const method = req.method ?? "GET"
+    const t0 = Date.now()
+    const rid = nextRid()
     const rawPath = (new URL(req.url ?? "/", "http://127.0.0.1").pathname.replace(/\/+$/, "") || "/")
     const fast = rawPath === "/fast" || rawPath.startsWith("/fast/")
     const path = fast ? rawPath.slice("/fast".length) || "/" : rawPath
+    const ctx = { rid, method, path, t0 }
 
     // --- unauthenticated route ---
     if (path === "/health") {
       if (method !== "GET") {
-        sendError(res, method, path, 405, "not_found_error", `Method ${method} not allowed`)
+        sendError(res, ctx, 405, "not_found_error", `Method ${method} not allowed`)
         return
       }
       const body: JsonObject = { status: "ok" }
       if (state.catalogSize !== undefined) body.catalogSize = state.catalogSize
       body.authenticated = getApiKey() !== null
-      sendJson(res, method, path, 200, body)
+      sendJson(res, ctx, 200, body)
+      return
+    }
+
+    // --- session marker (authenticated; writes one line so the log can be
+    //     split by session when reporting bugs) ---
+    if (path === "/mark") {
+      const presentedKey = clientKeyOf(req)
+      if (presentedKey !== clientKey) {
+        sendError(res, ctx, 401, "authentication_error", "invalid x-api-key")
+        return
+      }
+      if (method !== "POST") {
+        sendError(res, ctx, 405, "not_found_error", `Method ${method} not allowed`)
+        return
+      }
+      const bodyBuf = await readBody(req).catch(() => null)
+      let meta: JsonObject = {}
+      try { meta = bodyBuf ? (JSON.parse(bodyBuf.toString("utf8")) as JsonObject) : {} } catch {}
+      const sid = typeof meta.session === "string" ? meta.session.slice(0, 40) : "?"
+      const details = Object.entries(meta)
+        .filter(([k]) => k !== "session")
+        .map(([k, v]) => `${k}=${typeof v === "string" ? v : JSON.stringify(v)}`)
+        .join(" ")
+      log.info(`session ${sid} ${details}`.trim())
+      sendJson(res, ctx, 200, { ok: true })
       return
     }
 
@@ -173,7 +206,7 @@ export async function createServer(options: ProxyServerOptions = {}): Promise<Pr
     const knownPath = isMessages || isCountTokens || isModels || modelIdMatch !== null
 
     if (!knownPath) {
-      sendError(res, method, path, 404, "not_found_error", `Not found: ${path}`)
+      sendError(res, ctx, 404, "not_found_error", `Not found: ${path}`)
       return
     }
 
@@ -196,7 +229,7 @@ export async function createServer(options: ProxyServerOptions = {}): Promise<Pr
       log.warn(
         `401 auth on ${path}: header=${whichHeader} ${presentedKey === null ? "absent" : `mismatch ${fp(presentedKey)} (expected ${fp(clientKey)})`}`,
       )
-      sendError(res, method, path, 401, "authentication_error", "invalid x-api-key")
+      sendError(res, ctx, 401, "authentication_error", "invalid x-api-key")
       return
     }
 
@@ -205,28 +238,28 @@ export async function createServer(options: ProxyServerOptions = {}): Promise<Pr
     // --- GET /v1/models ---
     if (isModels || modelIdMatch !== null) {
       if (method !== "GET") {
-        sendError(res, method, path, 405, "not_found_error", `Method ${method} not allowed`)
+        sendError(res, ctx, 405, "not_found_error", `Method ${method} not allowed`)
         return
       }
       if (modelIdMatch !== null) {
         const model = await getAnthropicModel(modelIdMatch, apiKey)
         await noteCatalog(apiKey)
         if (!model) {
-          sendError(res, method, path, 404, "not_found_error", `model: ${modelIdMatch}`)
+          sendError(res, ctx, 404, "not_found_error", `model: ${modelIdMatch}`)
           return
         }
-        sendJson(res, method, path, 200, model as unknown as JsonObject)
+        sendJson(res, ctx, 200, model as unknown as JsonObject)
         return
       }
       const list = await listAnthropicModels(apiKey)
       await noteCatalog(apiKey)
-      sendJson(res, method, path, 200, list as unknown as JsonObject)
+      sendJson(res, ctx, 200, list as unknown as JsonObject)
       return
     }
 
     // --- POST routes need a JSON body ---
     if (method !== "POST") {
-      sendError(res, method, path, 405, "not_found_error", `Method ${method} not allowed`)
+      sendError(res, ctx, 405, "not_found_error", `Method ${method} not allowed`)
       return
     }
 
@@ -237,39 +270,39 @@ export async function createServer(options: ProxyServerOptions = {}): Promise<Pr
       if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error("body must be a JSON object")
       body = parsed as AnthropicRequest
     } catch (err) {
-      sendError(res, method, path, 400, "invalid_request_error", `Invalid JSON body: ${(err as Error).message}`)
+      sendError(res, ctx, 400, "invalid_request_error", `Invalid JSON body: ${(err as Error).message}`)
       return
     }
 
     // --- POST /v1/messages/count_tokens ---
     if (isCountTokens) {
       if (typeof body.model !== "string" || !body.model) {
-        sendError(res, method, path, 400, "invalid_request_error", "missing required field: model")
+        sendError(res, ctx, 400, "invalid_request_error", "missing required field: model")
         return
       }
       if (!Array.isArray(body.messages)) {
-        sendError(res, method, path, 400, "invalid_request_error", "missing required field: messages")
+        sendError(res, ctx, 400, "invalid_request_error", "missing required field: messages")
         return
       }
-      sendJson(res, method, path, 200, countTokens(body) as unknown as JsonObject)
+      sendJson(res, ctx, 200, countTokens(body) as unknown as JsonObject)
       return
     }
 
     // --- POST /v1/messages ---
     if (typeof body.model !== "string" || !body.model) {
-      sendError(res, method, path, 400, "invalid_request_error", "missing required field: model")
+      sendError(res, ctx, 400, "invalid_request_error", "missing required field: model")
       return
     }
     if (!Array.isArray(body.messages)) {
-      sendError(res, method, path, 400, "invalid_request_error", "missing required field: messages")
+      sendError(res, ctx, 400, "invalid_request_error", "missing required field: messages")
       return
     }
     if (typeof body.max_tokens !== "number") {
-      sendError(res, method, path, 400, "invalid_request_error", "missing required field: max_tokens")
+      sendError(res, ctx, 400, "invalid_request_error", "missing required field: max_tokens")
       return
     }
     if (!apiKey) {
-      sendError(res, method, path, 401, "authentication_error", "no Devin credential — run `devin-claude login`")
+      sendError(res, ctx, 401, "authentication_error", "no Devin credential — run `devin-claude login`")
       return
     }
 
@@ -279,7 +312,7 @@ export async function createServer(options: ProxyServerOptions = {}): Promise<Pr
       await noteCatalog(apiKey)
     } catch (err) {
       if (err instanceof ModelNotFoundError) {
-        sendError(res, method, path, 400, "invalid_request_error", err.message)
+        sendError(res, ctx, 400, "invalid_request_error", err.message)
         return
       }
       throw err
@@ -317,14 +350,14 @@ export async function createServer(options: ProxyServerOptions = {}): Promise<Pr
         "Cache-Control": "no-cache",
         Connection: "keep-alive",
       })
-      logRequest(method, path, 200)
+      logRequest(rid, method, path, 200, Date.now() - t0)
       try {
         for await (const event of streamChatEventsAsAnthropic(request)) {
           res.write(sseSerialize(event))
         }
       } catch (err) {
         const e = err as Error
-        log.warn(`stream error on ${method} ${path} model=${body.model}: ${e.message.slice(0, 300)}`)
+        log.warn(`stream error ${method} ${path} model=${body.model} [${rid}]: ${e.message.slice(0, 300)}`)
         const type =
           e instanceof ModelNotFoundError
             ? "invalid_request_error"
@@ -342,15 +375,15 @@ export async function createServer(options: ProxyServerOptions = {}): Promise<Pr
 
     try {
       const message = await chatToAnthropicResponse(request)
-      sendJson(res, method, path, 200, message as unknown as JsonObject)
+      sendJson(res, ctx, 200, message as unknown as JsonObject)
     } catch (err) {
       const e = err as Error
       const status = e instanceof ModelNotFoundError ? 400 : e instanceof CloudChatError ? 502 : 500
       const type = e instanceof ModelNotFoundError ? "invalid_request_error" : "api_error"
       if (status >= 500) {
-        log.warn(`upstream error on ${method} ${path} model=${body.model} -> ${status}: ${e.message.slice(0, 300)}`)
+        log.warn(`upstream error ${method} ${path} model=${body.model} -> ${status} [${rid}]: ${e.message.slice(0, 300)}`)
       }
-      sendError(res, method, path, status, type, e.message)
+      sendError(res, ctx, status, type, e.message)
     }
   }
 
@@ -359,7 +392,7 @@ export async function createServer(options: ProxyServerOptions = {}): Promise<Pr
       // Last-resort handler: never leak stack details beyond the message.
       if (!res.headersSent) {
         const path = req.url ?? "/"
-        sendError(res, req.method ?? "GET", path, 500, "api_error", (err as Error).message)
+        sendError(res, { rid: "r?", method: req.method ?? "GET", path, t0: Date.now() }, 500, "api_error", (err as Error).message)
       } else {
         res.end()
       }

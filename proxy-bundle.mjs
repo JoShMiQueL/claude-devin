@@ -1239,6 +1239,8 @@ var log = {
   info: (m) => logAt("info", m),
   debug: (m) => logAt("debug", m)
 };
+var reqSeq = 0;
+var nextRid = () => `r${(++reqSeq).toString(36)}`;
 var errorBody = (type, message) => ({
   type: "error",
   error: { type, message }
@@ -1292,8 +1294,8 @@ async function createServer(options = {}) {
         state.catalogSize = catalog.byUid.size;
     } catch {}
   };
-  const logRequest = (method, path, status) => {
-    const line = `${method} ${path} -> ${status}`;
+  const logRequest = (rid, method, path, status, ms) => {
+    const line = `${method} ${path} -> ${status} ${ms}ms [${rid}]`;
     if (status >= 500)
       log.warn(line);
     else if (status >= 400 && path !== "/api/hello")
@@ -1301,30 +1303,54 @@ async function createServer(options = {}) {
     else
       log.debug(line);
   };
-  const sendJson = (res, method, path, status, body) => {
+  const sendJson = (res, ctx, status, body) => {
     const payload = JSON.stringify(body);
     res.writeHead(status, { "Content-Type": "application/json", "Content-Length": Buffer.byteLength(payload) });
     res.end(payload);
-    logRequest(method, path, status);
+    logRequest(ctx.rid, ctx.method, ctx.path, status, Date.now() - ctx.t0);
   };
-  const sendError = (res, method, path, status, type, message) => {
-    sendJson(res, method, path, status, errorBody(type, message));
+  const sendError = (res, ctx, status, type, message) => {
+    sendJson(res, ctx, status, errorBody(type, message));
   };
   const handle = async (req, res) => {
     const method = req.method ?? "GET";
+    const t0 = Date.now();
+    const rid = nextRid();
     const rawPath = new URL(req.url ?? "/", "http://127.0.0.1").pathname.replace(/\/+$/, "") || "/";
     const fast = rawPath === "/fast" || rawPath.startsWith("/fast/");
     const path = fast ? rawPath.slice("/fast".length) || "/" : rawPath;
+    const ctx = { rid, method, path, t0 };
     if (path === "/health") {
       if (method !== "GET") {
-        sendError(res, method, path, 405, "not_found_error", `Method ${method} not allowed`);
+        sendError(res, ctx, 405, "not_found_error", `Method ${method} not allowed`);
         return;
       }
       const body = { status: "ok" };
       if (state.catalogSize !== undefined)
         body.catalogSize = state.catalogSize;
       body.authenticated = getApiKey() !== null;
-      sendJson(res, method, path, 200, body);
+      sendJson(res, ctx, 200, body);
+      return;
+    }
+    if (path === "/mark") {
+      const presentedKey = clientKeyOf(req);
+      if (presentedKey !== clientKey) {
+        sendError(res, ctx, 401, "authentication_error", "invalid x-api-key");
+        return;
+      }
+      if (method !== "POST") {
+        sendError(res, ctx, 405, "not_found_error", `Method ${method} not allowed`);
+        return;
+      }
+      const bodyBuf = await readBody(req).catch(() => null);
+      let meta = {};
+      try {
+        meta = bodyBuf ? JSON.parse(bodyBuf.toString("utf8")) : {};
+      } catch {}
+      const sid = typeof meta.session === "string" ? meta.session.slice(0, 40) : "?";
+      const details = Object.entries(meta).filter(([k]) => k !== "session").map(([k, v]) => `${k}=${typeof v === "string" ? v : JSON.stringify(v)}`).join(" ");
+      log.info(`session ${sid} ${details}`.trim());
+      sendJson(res, ctx, 200, { ok: true });
       return;
     }
     const isMessages = path === "/v1/messages";
@@ -1333,7 +1359,7 @@ async function createServer(options = {}) {
     const modelIdMatch = path.startsWith("/v1/models/") ? decodeURIComponent(path.slice("/v1/models/".length)) : null;
     const knownPath = isMessages || isCountTokens || isModels || modelIdMatch !== null;
     if (!knownPath) {
-      sendError(res, method, path, 404, "not_found_error", `Not found: ${path}`);
+      sendError(res, ctx, 404, "not_found_error", `Not found: ${path}`);
       return;
     }
     const presentedKey = clientKeyOf(req);
@@ -1341,32 +1367,32 @@ async function createServer(options = {}) {
       const whichHeader = req.headers["x-api-key"] ? "x-api-key" : req.headers["anthropic-api-key"] ? "anthropic-api-key" : req.headers["api-key"] ? "api-key" : req.headers.authorization ? "authorization" : "none";
       const fp = (s) => s === null ? "null" : `len=${s.length} head="${s.slice(0, 6)}" tail="${s.slice(-4)}"`;
       log.warn(`401 auth on ${path}: header=${whichHeader} ${presentedKey === null ? "absent" : `mismatch ${fp(presentedKey)} (expected ${fp(clientKey)})`}`);
-      sendError(res, method, path, 401, "authentication_error", "invalid x-api-key");
+      sendError(res, ctx, 401, "authentication_error", "invalid x-api-key");
       return;
     }
     const apiKey = getApiKey() ?? "";
     if (isModels || modelIdMatch !== null) {
       if (method !== "GET") {
-        sendError(res, method, path, 405, "not_found_error", `Method ${method} not allowed`);
+        sendError(res, ctx, 405, "not_found_error", `Method ${method} not allowed`);
         return;
       }
       if (modelIdMatch !== null) {
         const model = await getAnthropicModel(modelIdMatch, apiKey);
         await noteCatalog(apiKey);
         if (!model) {
-          sendError(res, method, path, 404, "not_found_error", `model: ${modelIdMatch}`);
+          sendError(res, ctx, 404, "not_found_error", `model: ${modelIdMatch}`);
           return;
         }
-        sendJson(res, method, path, 200, model);
+        sendJson(res, ctx, 200, model);
         return;
       }
       const list = await listAnthropicModels(apiKey);
       await noteCatalog(apiKey);
-      sendJson(res, method, path, 200, list);
+      sendJson(res, ctx, 200, list);
       return;
     }
     if (method !== "POST") {
-      sendError(res, method, path, 405, "not_found_error", `Method ${method} not allowed`);
+      sendError(res, ctx, 405, "not_found_error", `Method ${method} not allowed`);
       return;
     }
     let body;
@@ -1377,35 +1403,35 @@ async function createServer(options = {}) {
         throw new Error("body must be a JSON object");
       body = parsed;
     } catch (err) {
-      sendError(res, method, path, 400, "invalid_request_error", `Invalid JSON body: ${err.message}`);
+      sendError(res, ctx, 400, "invalid_request_error", `Invalid JSON body: ${err.message}`);
       return;
     }
     if (isCountTokens) {
       if (typeof body.model !== "string" || !body.model) {
-        sendError(res, method, path, 400, "invalid_request_error", "missing required field: model");
+        sendError(res, ctx, 400, "invalid_request_error", "missing required field: model");
         return;
       }
       if (!Array.isArray(body.messages)) {
-        sendError(res, method, path, 400, "invalid_request_error", "missing required field: messages");
+        sendError(res, ctx, 400, "invalid_request_error", "missing required field: messages");
         return;
       }
-      sendJson(res, method, path, 200, countTokens(body));
+      sendJson(res, ctx, 200, countTokens(body));
       return;
     }
     if (typeof body.model !== "string" || !body.model) {
-      sendError(res, method, path, 400, "invalid_request_error", "missing required field: model");
+      sendError(res, ctx, 400, "invalid_request_error", "missing required field: model");
       return;
     }
     if (!Array.isArray(body.messages)) {
-      sendError(res, method, path, 400, "invalid_request_error", "missing required field: messages");
+      sendError(res, ctx, 400, "invalid_request_error", "missing required field: messages");
       return;
     }
     if (typeof body.max_tokens !== "number") {
-      sendError(res, method, path, 400, "invalid_request_error", "missing required field: max_tokens");
+      sendError(res, ctx, 400, "invalid_request_error", "missing required field: max_tokens");
       return;
     }
     if (!apiKey) {
-      sendError(res, method, path, 401, "authentication_error", "no Devin credential — run `devin-claude login`");
+      sendError(res, ctx, 401, "authentication_error", "no Devin credential — run `devin-claude login`");
       return;
     }
     let modelUid;
@@ -1414,7 +1440,7 @@ async function createServer(options = {}) {
       await noteCatalog(apiKey);
     } catch (err) {
       if (err instanceof ModelNotFoundError) {
-        sendError(res, method, path, 400, "invalid_request_error", err.message);
+        sendError(res, ctx, 400, "invalid_request_error", err.message);
         return;
       }
       throw err;
@@ -1454,14 +1480,14 @@ async function createServer(options = {}) {
         "Cache-Control": "no-cache",
         Connection: "keep-alive"
       });
-      logRequest(method, path, 200);
+      logRequest(rid, method, path, 200, Date.now() - t0);
       try {
         for await (const event of streamChatEventsAsAnthropic(request)) {
           res.write(sseSerialize(event));
         }
       } catch (err) {
         const e = err;
-        log.warn(`stream error on ${method} ${path} model=${body.model}: ${e.message.slice(0, 300)}`);
+        log.warn(`stream error ${method} ${path} model=${body.model} [${rid}]: ${e.message.slice(0, 300)}`);
         const type = e instanceof ModelNotFoundError ? "invalid_request_error" : e instanceof CloudChatError ? "api_error" : "api_error";
         res.write(`event: error
 data: ${JSON.stringify(errorBody(type, e.message))}
@@ -1479,22 +1505,22 @@ data: {"type":"message_stop"}
     }
     try {
       const message = await chatToAnthropicResponse(request);
-      sendJson(res, method, path, 200, message);
+      sendJson(res, ctx, 200, message);
     } catch (err) {
       const e = err;
       const status = e instanceof ModelNotFoundError ? 400 : e instanceof CloudChatError ? 502 : 500;
       const type = e instanceof ModelNotFoundError ? "invalid_request_error" : "api_error";
       if (status >= 500) {
-        log.warn(`upstream error on ${method} ${path} model=${body.model} -> ${status}: ${e.message.slice(0, 300)}`);
+        log.warn(`upstream error ${method} ${path} model=${body.model} -> ${status} [${rid}]: ${e.message.slice(0, 300)}`);
       }
-      sendError(res, method, path, status, type, e.message);
+      sendError(res, ctx, status, type, e.message);
     }
   };
   const server = httpCreateServer((req, res) => {
     handle(req, res).catch((err) => {
       if (!res.headersSent) {
         const path = req.url ?? "/";
-        sendError(res, req.method ?? "GET", path, 500, "api_error", err.message);
+        sendError(res, { rid: "r?", method: req.method ?? "GET", path, t0: Date.now() }, 500, "api_error", err.message);
       } else {
         res.end();
       }

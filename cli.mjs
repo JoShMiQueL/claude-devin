@@ -432,14 +432,32 @@ async function cmdRun(claudeArgs) {
   await ensureProxy()
   maybeNotifyUpdate() // fire-and-forget, cached 24h
 
+  // `--fast` is claude-devin's own flag — strip it before forwarding args.
+  const fast = claudeArgs.includes("--fast")
+  const args = fast ? claudeArgs.filter((a) => a !== "--fast") : claudeArgs
+
+  // Session marker in the proxy log — lets `service logs` (and bug reports)
+  // be split by invocation: each run leaves one `session s...` line with
+  // pid, args, and mode before claude's traffic starts.
+  const sessionId = `s${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`
+  fetch(`${proxyBase()}/mark`, {
+    method: "POST",
+    headers: { ...authHeaders(), "Content-Type": "application/json" },
+    body: JSON.stringify({
+      session: sessionId,
+      pid: process.pid,
+      fast,
+      args: args.join(" ").slice(0, 200) || "(interactive)",
+      v: VERSION,
+    }),
+  }).catch(() => {})
+
   // claude resolves its API key from ANTHROPIC_API_KEY first (then
   // ANTHROPIC_AUTH_TOKEN / apiKeyHelper). A pre-existing ANTHROPIC_API_KEY in
   // the user's environment or settings would clobber our local client key and
   // 401 against the proxy — set BOTH to the same loopback key.
   // `--model` is claude's own flag and reaches it via claudeArgs, so we don't
   // intercept it — `claude-devin --model x` ≡ `claude --model x`.
-  const fast = claudeArgs.includes("--fast")
-  const args = fast ? claudeArgs.filter((a) => a !== "--fast") : claudeArgs
   const env = {
     ...process.env,
     ANTHROPIC_BASE_URL: proxyBase() + (fast ? "/fast" : ""),
