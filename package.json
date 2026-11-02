@@ -10,9 +10,7 @@
   "files": [
     "cli.mjs",
     "proxy-bundle.mjs",
-    "src/",
-    ".claude-plugin/",
-    "commands/"
+    "src/"
   ],
   "scripts": {
     "build": "bun build src/devin-anthropic-proxy/bundle-entry.ts --target node --outfile proxy-bundle.mjs",
