@@ -1,0 +1,14 @@
+{
+  "name": "devin-marketplace",
+  "owner": {
+    "name": "JoShMiQueL",
+    "email": "joshmiquel.cs@gmail.com"
+  },
+  "plugins": [
+    {
+      "name": "devin",
+      "source": "./",
+      "description": "Use your Devin subscription (Cascade models) in Claude Code via a local Anthropic-compatible proxy"
+    }
+  ]
+}
