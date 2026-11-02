@@ -11,7 +11,7 @@
  */
 
 import { spawn, spawnSync } from "node:child_process"
-import { existsSync, mkdirSync, writeFileSync, readFileSync, renameSync, openSync, unlinkSync } from "node:fs"
+import { existsSync, mkdirSync, writeFileSync, readFileSync, renameSync, openSync, closeSync, unlinkSync, statSync } from "node:fs"
 import { homedir } from "node:os"
 import { dirname, join, resolve } from "node:path"
 import { fileURLToPath, pathToFileURL } from "node:url"
@@ -65,6 +65,7 @@ Management commands:
                         stop     kill the detached proxy
                         restart  stop + start
                         status   show service state (PID, health)
+                        logs [N] tail -f the proxy log (last N lines, then follow)
   help                Show this help.
   version             Show the claude-devin version.
 
@@ -132,6 +133,15 @@ async function ensureProxy() {
     fail(`proxy bundle not found at ${PROXY_BUNDLE} — reinstall claude-devin`)
   }
   if (await proxyUp()) return // service already running — reuse it
+
+  // Rotate the log when it grows past ~5 MB: proxy.log -> proxy.log.1
+  // (previous .1 is discarded — two generations max, enough for bug reports).
+  try {
+    const size = statSync(PROXY_LOG).size
+    if (size > 5 * 1024 * 1024) renameSync(PROXY_LOG, PROXY_LOG + ".1")
+  } catch {
+    // No log yet, or already rotated — either is fine.
+  }
 
   // Spawn detached so the proxy survives this process (persistent service).
   const out = openSync(PROXY_LOG, "a")
@@ -333,6 +343,37 @@ async function cmdService(args) {
       console.log(`pid          : ${pid ?? "none"}`)
       if (existsSync(PROXY_LOG)) console.log(`log          : ${PROXY_LOG}`)
       break
+    }
+    case "logs": {
+      // tail -f equivalent: print last N lines, then stream new data.
+      if (!existsSync(PROXY_LOG)) {
+        console.log(`no log yet at ${PROXY_LOG}`)
+        return
+      }
+      const tailLines = Number(args[1]) || 50
+      const content = readFileSync(PROXY_LOG, "utf8")
+      const lines = content.split(/\r?\n/)
+      console.log(lines.slice(-tailLines).join("\n"))
+      // Follow: poll the file for growth every second.
+      let offset = statSync(PROXY_LOG).size
+      console.error("--- following (Ctrl+C to stop) ---")
+      for (;;) {
+        await sleep(1000)
+        try {
+          const size = statSync(PROXY_LOG).size
+          if (size < offset) offset = 0 // rotated
+          if (size > offset) {
+            const fd = openSync(PROXY_LOG, "r")
+            const buf = Buffer.alloc(size - offset)
+            readFileSync(fd, buf, 0, buf.length, offset)
+            closeSync(fd)
+            process.stdout.write(buf.toString("utf8"))
+            offset = size
+          }
+        } catch {
+          /* log briefly missing during rotation */
+        }
+      }
     }
     default:
       fail(`unknown service command '${sub}' — use start|stop|restart|status`)
