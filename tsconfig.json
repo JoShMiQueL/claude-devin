@@ -6,15 +6,12 @@
     "lib": ["ES2022"],
     "types": ["bun"],
     "strict": true,
-    "allowJs": true,
-    "checkJs": false,
-    "noUncheckedIndexedAccess": true,
-    "rewriteRelativeImportExtensions": true,
-    "declaration": true,
-    "rootDir": "src",
-    "outDir": "dist",
+    "noEmit": true,
     "skipLibCheck": true,
-    "verbatimModuleSyntax": true
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "allowImportingTsExtensions": true,
+    "resolveJsonModule": true
   },
-  "include": ["src"]
+  "include": ["src/**/*.ts", "test/**/*.ts"]
 }

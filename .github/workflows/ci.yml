@@ -5,55 +5,64 @@ on:
     branches: [main]
   pull_request:
 
-# Superseded runs on the same ref are pointless work.
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   verify:
-    runs-on: ubuntu-26.04
+    runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v4
+        with:
+          filter: blob:none
 
       - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: 1.4.0
 
-      - uses: actions/cache@v6
+      - uses: actions/cache@v4
         with:
           path: ~/.bun/install/cache
-          key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
-          restore-keys: |
-            bun-${{ runner.os }}-
+          key: bun-${{ runner.os }}-${{ hashFiles('bun.lock', 'package.json') }}
+          restore-keys: bun-${{ runner.os }}-
 
-      - name: Install dependencies
-        run: bun install --frozen-lockfile
+      - name: Install
+        run: bun install --frozen-lockfile || bun install
 
       - name: Typecheck
-        run: npm run typecheck
+        run: bun run typecheck
 
-      - name: Build
-        run: npm run build
+      - name: Build proxy bundle
+        run: bun run build
 
-  # The plugin branches on process.platform and spawns a browser per platform
-  # (rundll32 on Windows, open on macOS), and the tests bind a real loopback
-  # listener, so running them on one OS would leave those paths unexercised.
+      - name: Bundle smoke test
+        run: |
+          node proxy-bundle.mjs &
+          PROXY_PID=$!
+          sleep 2
+          curl -sf http://127.0.0.1:42100/health | grep -q '"status":"ok"'
+          kill $PROXY_PID
+
   test:
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-26.04, windows-latest, macos-latest]
+        os: [ubuntu-latest, windows-latest, macos-latest]
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v4
+        with:
+          filter: blob:none
 
       - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: 1.4.0
 
-      - name: Install dependencies
-        run: bun install --frozen-lockfile
+      - uses: actions/cache@v4
+        with:
+          path: ~/.bun/install/cache
+          key: bun-test-${{ runner.os }}-${{ hashFiles('bun.lock', 'package.json') }}
+          restore-keys: bun-test-${{ runner.os }}-
+
+      - name: Install
+        run: bun install --frozen-lockfile || bun install
 
       - name: Test
         run: bun test

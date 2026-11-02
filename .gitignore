@@ -1,8 +1,5 @@
 node_modules/
+bun.lockb
 dist/
-*.tgz
-.tmp*
-
-.devin-token.env
-
-.devin-login-state.json
+*.log
+.DS_Store
