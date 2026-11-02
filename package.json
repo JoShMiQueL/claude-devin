@@ -14,10 +14,10 @@
   ],
   "scripts": {
     "build": "bun build src/devin-anthropic-proxy/bundle-entry.ts --target node --outfile proxy-bundle.mjs",
-    "lint": "oxlint --deny-warnings src test",
-    "typecheck": "tsc --noEmit",
+    "lint": "oxlint -c .oxlintrc.json --deny-warnings src test",
+    "typecheck": "bun check",
     "test": "bun test",
-    "check": "bun run lint && bun run typecheck && bun test"
+    "verify": "bun run lint && bun run typecheck && bun test"
   },
   "keywords": [
     "claude-code",

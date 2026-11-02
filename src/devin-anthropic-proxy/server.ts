@@ -58,6 +58,46 @@ const nextRid = (): string => `r${(++reqSeq).toString(36)}`
 
 type JsonObject = Record<string, unknown>
 
+/** Per-request finish line, tagged with the request id so it can be joined
+ * with upstream-error lines: 5xx are warn-worthy; the rest is debug noise
+ * (health probes from the CLI poll every 250ms on startup). */
+const logRequest = (rid: string, method: string, path: string, status: number, ms: number): void => {
+  const line = `${method} ${path} -> ${status} ${ms}ms [${rid}]`
+  // /v1/messages is the only request that matters at info level — log it
+  // always (success or failure) so service logs show real traffic, while
+  // health/models probes stay at debug.
+  if (path === "/v1/messages") {
+    if (status >= 400) log.warn(line)
+    else log.info(line)
+  } else if (status >= 500) log.warn(line)
+  else if (status >= 400 && path !== "/api/hello") log.info(line)
+  else log.debug(line)
+}
+
+/** Compact fingerprint of a credential for 401 logs — never the full key. */
+const fp = (s: string | null) =>
+  s === null ? "null" : `len=${s.length} head="${s.slice(0, 6)}" tail="${s.slice(-4)}"`
+
+interface RequestCtx {
+  rid: string
+  method: string
+  path: string
+  t0: number
+}
+
+/** Write a JSON response and emit the per-request finish log line. */
+const sendJson = (res: ServerResponse, ctx: RequestCtx, status: number, body: JsonObject): void => {
+  const payload = JSON.stringify(body)
+  res.writeHead(status, { "Content-Type": "application/json", "Content-Length": Buffer.byteLength(payload) })
+  res.end(payload)
+  logRequest(ctx.rid, ctx.method, ctx.path, status, Date.now() - ctx.t0)
+}
+
+/** Write a JSON error envelope and emit the finish log line. */
+const sendError = (res: ServerResponse, ctx: RequestCtx, status: number, type: string, message: string): void => {
+  sendJson(res, ctx, status, errorBody(type, message))
+}
+
 const errorBody = (type: string, message: string): JsonObject => ({
   type: "error",
   error: { type, message },
@@ -128,33 +168,6 @@ export async function createServer(options: ProxyServerOptions = {}): Promise<Pr
     } catch {
       // Catalog is best-effort; /health simply omits catalogSize.
     }
-  }
-
-  // Per-request finish line, tagged with the request id so it can be joined
-  // with upstream-error lines: 5xx are warn-worthy; the rest is debug noise
-  // (health probes from the CLI poll every 250ms on startup).
-  const logRequest = (rid: string, method: string, path: string, status: number, ms: number): void => {
-    const line = `${method} ${path} -> ${status} ${ms}ms [${rid}]`
-    // /v1/messages is the only request that matters at info level — log it
-    // always (success or failure) so service logs show real traffic, while
-    // health/models probes stay at debug.
-    if (path === "/v1/messages") {
-      if (status >= 400) log.warn(line)
-      else log.info(line)
-    } else if (status >= 500) log.warn(line)
-    else if (status >= 400 && path !== "/api/hello") log.info(line)
-    else log.debug(line)
-  }
-
-  const sendJson = (res: ServerResponse, ctx: { rid: string; method: string; path: string; t0: number }, status: number, body: JsonObject): void => {
-    const payload = JSON.stringify(body)
-    res.writeHead(status, { "Content-Type": "application/json", "Content-Length": Buffer.byteLength(payload) })
-    res.end(payload)
-    logRequest(ctx.rid, ctx.method, ctx.path, status, Date.now() - ctx.t0)
-  }
-
-  const sendError = (res: ServerResponse, ctx: { rid: string; method: string; path: string; t0: number }, status: number, type: string, message: string): void => {
-    sendJson(res, ctx, status, errorBody(type, message))
   }
 
   const handle = async (req: IncomingMessage, res: ServerResponse): Promise<void> => {
@@ -230,8 +243,6 @@ export async function createServer(options: ProxyServerOptions = {}): Promise<Pr
             : req.headers.authorization
               ? "authorization"
               : "none"
-      const fp = (s: string | null) =>
-        s === null ? "null" : `len=${s.length} head="${s.slice(0, 6)}" tail="${s.slice(-4)}"`
       log.warn(
         `401 auth on ${path}: header=${whichHeader} ${presentedKey === null ? "absent" : `mismatch ${fp(presentedKey)} (expected ${fp(clientKey)})`}`,
       )
