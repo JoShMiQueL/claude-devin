@@ -11,7 +11,7 @@
  */
 
 import { spawn, spawnSync } from "node:child_process"
-import { existsSync, mkdirSync, writeFileSync, readFileSync, renameSync } from "node:fs"
+import { existsSync, mkdirSync, writeFileSync, readFileSync, renameSync, openSync, unlinkSync } from "node:fs"
 import { homedir } from "node:os"
 import { dirname, join, resolve } from "node:path"
 import { fileURLToPath, pathToFileURL } from "node:url"
@@ -32,6 +32,8 @@ const CLIENT_KEY = "devin-claude-local"
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const PROXY_BUNDLE = join(__dirname, "proxy-bundle.mjs")
+const PROXY_PID = join(__dirname, "proxy.pid")
+const PROXY_LOG = join(__dirname, "proxy.log")
 
 // --- paths (keep in sync with src/devin-anthropic-proxy/auth.ts) ---
 const configRoot = process.env.XDG_CONFIG_HOME || join(homedir(), ".config")
@@ -58,6 +60,11 @@ Management commands:
   doctor              Diagnose missing deps / credentials.
   install-claude      Install the \`claude\` CLI if it's missing.
   upgrade             Re-download the latest proxy bundle.
+  service <cmd>       Manage the background proxy service:
+                        start    spawn the proxy detached (survives sessions)
+                        stop     kill the detached proxy
+                        restart  stop + start
+                        status   show service state (PID, health)
   help                Show this help.
   version             Show the claude-devin version.
 
@@ -262,6 +269,91 @@ async function cmdDoctor() {
   }
 }
 
+// ---------------------------------------------------------------------------
+// background service — `claude-devin service <start|stop|restart|status>`
+
+function servicePid() {
+  try {
+    const pid = Number(readFileSync(PROXY_PID, "utf8").trim())
+    if (!pid) return null
+    // Check the process is alive (signal 0 = existence probe).
+    process.kill(pid, 0)
+    return pid
+  } catch {
+    return null
+  }
+}
+
+async function cmdService(args) {
+  const sub = args[0] ?? "status"
+  switch (sub) {
+    case "start": {
+      if (await proxyUp()) {
+        console.log(`service already running on ${proxyBase()} (pid ${servicePid() ?? "?"})`)
+        return
+      }
+      if (!existsSync(PROXY_BUNDLE)) fail(`proxy bundle not found at ${PROXY_BUNDLE}`)
+      const out = openSync(PROXY_LOG, "a")
+      const child = spawn(process.execPath, [PROXY_BUNDLE], {
+        detached: true,
+        stdio: ["ignore", out, out],
+        env: {
+          ...process.env,
+          DEVIN_CLAUDE_PORT: String(port()),
+          DEVIN_CLAUDE_CLIENT_KEY: CLIENT_KEY,
+        },
+      })
+      child.unref()
+      writeFileSync(PROXY_PID, String(child.pid))
+      const deadline = Date.now() + 12_000
+      while (Date.now() < deadline) {
+        await sleep(250)
+        if (await proxyUp()) {
+          // Same warm-up as ensureProxy.
+          fetch(`${proxyBase()}/v1/models`, { headers: authHeaders() }).catch(() => {})
+          console.log(`service started — pid ${child.pid}, ${proxyBase()}, log ${PROXY_LOG}`)
+          return
+        }
+        if (child.exitCode !== null) break
+      }
+      fail(`service did not come up — see ${PROXY_LOG}`)
+      break
+    }
+    case "stop": {
+      const pid = servicePid()
+      if (!pid) {
+        console.log("service not running (no pid / not alive)")
+        try { unlinkSync(PROXY_PID) } catch {}
+        return
+      }
+      try {
+        process.kill(pid, "SIGTERM")
+        console.log(`service stopped (pid ${pid})`)
+      } catch (e) {
+        fail(`could not stop pid ${pid}: ${e.message}`)
+      }
+      try { unlinkSync(PROXY_PID) } catch {}
+      break
+    }
+    case "restart": {
+      await cmdService(["stop"])
+      await sleep(400)
+      await cmdService(["start"])
+      break
+    }
+    case "status": {
+      const pid = servicePid()
+      const up = await proxyUp()
+      console.log(`service      : ${up ? `UP (${proxyBase()})` : "down"}`)
+      console.log(`pid          : ${pid ?? "none"}`)
+      if (existsSync(PROXY_LOG)) console.log(`log          : ${PROXY_LOG}`)
+      break
+    }
+    default:
+      fail(`unknown service command '${sub}' — use start|stop|restart|status`)
+  }
+}
+
 async function cmdUpgrade() {
   const base = `https://raw.githubusercontent.com/JoShMiQueL/claude-devin/main`
   const files = [
@@ -362,6 +454,7 @@ switch (cmd) {
   case "doctor":         await cmdDoctor(); break
   case "install-claude": cmdInstallClaude(); break
   case "upgrade":        await cmdUpgrade(); break
+  case "service":        await cmdService(argv.slice(1)); break
   case "help":           console.log(USAGE); break
   case "version":        console.log(VERSION); break
   default:               await cmdRun(argv); break // every other arg is claude's
