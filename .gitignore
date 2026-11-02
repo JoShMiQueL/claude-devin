@@ -3,3 +3,5 @@ bun.lockb
 dist/
 *.log
 .DS_Store
+proxy.pid
+proxy.log
