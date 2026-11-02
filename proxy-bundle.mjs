@@ -1479,17 +1479,47 @@ async function createServer(options = {}) {
       completionOpts: converted.completionOpts,
       signal: abort.signal
     };
+    const toolsOffered = Array.isArray(body.tools) ? body.tools.length : 0;
+    log.info(`${method} ${path} [${rid}] model=${body.model} msgs=${body.messages.length} tools=${toolsOffered} max_tok=${body.max_tokens}${fast ? " fast" : ""}`);
     if (body.stream === true) {
       res.writeHead(200, {
         "Content-Type": "text/event-stream",
         "Cache-Control": "no-cache",
         Connection: "keep-alive"
       });
-      logRequest(rid, method, path, 200, Date.now() - t0);
+      let ttft = -1;
+      const toolNames = new Set;
+      let inTok = 0;
+      let outTok = 0;
+      let stopReason = "?";
+      let blocks = 0;
+      const streamStart = Date.now();
       try {
         for await (const event of streamChatEventsAsAnthropic(request)) {
+          if (ttft < 0 && event.event === "content_block_start")
+            ttft = Date.now() - t0;
+          if (event.event === "content_block_start")
+            blocks++;
+          if (event.event === "content_block_start") {
+            const block = event.data.content_block;
+            if (block?.type === "tool_use" && block.name)
+              toolNames.add(block.name);
+          }
+          if (event.event === "message_start") {
+            const u = event.data.message?.usage;
+            if (typeof u?.input_tokens === "number" && u.input_tokens > 0)
+              inTok = u.input_tokens;
+          }
+          if (event.event === "message_delta") {
+            const d = event.data;
+            if (d.delta?.stop_reason)
+              stopReason = d.delta.stop_reason;
+            if (typeof d.usage?.output_tokens === "number")
+              outTok = d.usage.output_tokens;
+          }
           res.write(sseSerialize(event));
         }
+        log.info(`${method} ${path} -> 200 [${rid}] ttft=${ttft}ms total=${Date.now() - t0}ms stop=${stopReason} in=${inTok}tok out=${outTok}tok blocks=${blocks} tools=[${[...toolNames].join(",")}]`);
       } catch (err) {
         const e = err;
         log.warn(`stream error ${method} ${path} model=${body.model} [${rid}]: ${e.message.slice(0, 300)}`);
@@ -1510,6 +1540,8 @@ data: {"type":"message_stop"}
     }
     try {
       const message = await chatToAnthropicResponse(request);
+      const toolNames = message.content.filter((b) => b.type === "tool_use").map((b) => String(b.name));
+      log.info(`${method} ${path} -> 200 [${rid}] total=${Date.now() - t0}ms stop=${message.stop_reason} in=${message.usage.input_tokens}tok out=${message.usage.output_tokens}tok tools=[${toolNames.join(",")}]`);
       sendJson(res, ctx, 200, message);
     } catch (err) {
       const e = err;

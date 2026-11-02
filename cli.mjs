@@ -487,7 +487,20 @@ async function cmdRun(claudeArgs) {
       process.env.CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY ?? "1",
   }
   const claude = spawn("claude", args, { stdio: "inherit", env })
+  const startedAt = Date.now()
   const code = await new Promise((r) => claude.on("exit", r))
+
+  // Session-end marker — pairs with the `session …` line logged at start so
+  // `service logs` shows how long each invocation lasted.
+  fetch(`${proxyBase()}/mark`, {
+    method: "POST",
+    headers: { ...authHeaders(), "Content-Type": "application/json" },
+    body: JSON.stringify({
+      session: sessionId + "-end",
+      ms: Date.now() - startedAt,
+      exit: code ?? 0,
+    }),
+  }).catch(() => {})
   process.exit(code ?? 0)
 }
 
