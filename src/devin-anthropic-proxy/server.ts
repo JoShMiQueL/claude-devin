@@ -320,6 +320,15 @@ export async function createServer(options: ProxyServerOptions = {}): Promise<Pr
 
   const address = server.address()
   const port = typeof address === "object" && address ? address.port : wantedPort
+
+  // Warm the catalog + user_jwt caches in the background so the first
+  // /v1/messages doesn't pay the Cascade round-trip (~1-3s on cold start).
+  // Fire-and-forget: failures are retried lazily on the real request.
+  const apiKey = getApiKey()
+  if (apiKey) {
+    noteCatalog(apiKey).catch(() => {})
+  }
+
   return { server, port }
 }
 
