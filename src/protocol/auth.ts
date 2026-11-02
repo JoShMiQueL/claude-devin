@@ -37,6 +37,9 @@ export interface UserJwt {
 }
 
 /** Mint a fresh user_jwt for the given session token. */
+/** Restore base64 padding stripped from a JWT segment before decoding. */
+const base64Pad = (s: string): string => s + "=".repeat((4 - (s.length % 4)) % 4)
+
 export async function mintUserJwt(apiKey: string, host = DEFAULT_API_SERVER, signal?: AbortSignal): Promise<UserJwt> {
   const metadata = buildMetadata({
     apiKey,
@@ -75,8 +78,7 @@ export async function mintUserJwt(apiKey: string, host = DEFAULT_API_SERVER, sig
   let expiresAt = Math.floor(Date.now() / 1000) + FALLBACK_JWT_TTL_SECONDS
   try {
     const parts = jwt.split(".")
-    const pad = (s: string) => s + "=".repeat((4 - (s.length % 4)) % 4)
-    const payload = JSON.parse(Buffer.from(pad(parts[1]!).replace(/-/g, "+").replace(/_/g, "/"), "base64").toString("utf8")) as {
+    const payload = JSON.parse(Buffer.from(base64Pad(parts[1]!).replace(/-/g, "+").replace(/_/g, "/"), "base64").toString("utf8")) as {
       exp?: number
     }
     if (typeof payload.exp === "number") expiresAt = payload.exp

@@ -192,12 +192,13 @@ function encodeToolDef(tool: ChatToolDefinition): Buffer {
   ])
 }
 
+const float64 = (fieldNum: number, value: number): Buffer => {
+  const buf = Buffer.alloc(8)
+  buf.writeDoubleLE(value, 0)
+  return Buffer.concat([Buffer.from([(fieldNum << 3) | 1]), buf])
+}
+
 function encodeCompletionConfiguration(opts: CompletionOptions): Buffer {
-  const float64 = (fieldNum: number, value: number) => {
-    const buf = Buffer.alloc(8)
-    buf.writeDoubleLE(value, 0)
-    return Buffer.concat([Buffer.from([(fieldNum << 3) | 1]), buf])
-  }
   return Buffer.concat([
     encodeVarintField(1, 1),
     encodeVarintField(2, opts.maxInputTokens ?? 64_000),

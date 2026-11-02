@@ -117,12 +117,6 @@ at ~5 MB on start):
 - **Tail it** with `claude-devin service logs [N]` — last N lines then
   follow.
 
-## Claude Code plugin (optional)
-
-The `claude-devin/` directory is also a valid Claude Code plugin: load it
-with `claude --plugin-dir <path>` to get `/devin:login`, `/devin:models`,
-and `/devin:status` slash commands inside Claude Code.
-
 ## Benchmarks
 
 Measured end-to-end on agentic tasks with `swe-2-high` (`n=2` per cell, all

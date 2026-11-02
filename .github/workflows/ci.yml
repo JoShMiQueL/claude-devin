@@ -18,15 +18,14 @@ jobs:
           filter: blob:none
 
       - uses: oven-sh/setup-bun@v2
-
-      - uses: actions/cache@v4
         with:
-          path: ~/.bun/install/cache
-          key: bun-${{ runner.os }}-${{ hashFiles('bun.lock', 'package.json') }}
-          restore-keys: bun-${{ runner.os }}-
+          cache: true
 
       - name: Install
-        run: bun install --frozen-lockfile || bun install
+        run: bun install --frozen-lockfile
+
+      - name: Lint
+        run: bun run lint
 
       - name: Typecheck
         run: bun run typecheck
@@ -54,15 +53,11 @@ jobs:
           filter: blob:none
 
       - uses: oven-sh/setup-bun@v2
-
-      - uses: actions/cache@v4
         with:
-          path: ~/.bun/install/cache
-          key: bun-test-${{ runner.os }}-${{ hashFiles('bun.lock', 'package.json') }}
-          restore-keys: bun-test-${{ runner.os }}-
+          cache: true
 
       - name: Install
-        run: bun install --frozen-lockfile || bun install
+        run: bun install --frozen-lockfile
 
       - name: Test
         run: bun test

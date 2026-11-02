@@ -29,6 +29,11 @@ export function toStoredCredential(token: string): StoredCredential {
   return saveCredentials({ apiKey: token, apiServerUrl: undefined })
 }
 
+/** Render the minimal success/error page shown in the browser after login. */
+const page = (title: string, body: string) =>
+  `<!doctype html><html><head><meta charset="utf-8"><title>${title}</title></head>` +
+  `<body style="font-family:system-ui;margin:3rem"><h1>${title}</h1><p>${body}</p></body></html>`
+
 /** Open a URL in the system browser (best-effort, fire-and-forget). */
 function openBrowser(url: string): void {
   const detached = { detached: true, stdio: "ignore" as const }
@@ -66,10 +71,6 @@ function startCallbackServer(state: string, timeoutMs = CALLBACK_TIMEOUT_MS): Pr
       if (timer) clearTimeout(timer)
       server.close()
     }
-
-    const page = (title: string, body: string) =>
-      `<!doctype html><html><head><meta charset="utf-8"><title>${title}</title></head>` +
-      `<body style="font-family:system-ui;margin:3rem"><h1>${title}</h1><p>${body}</p></body></html>`
 
     const server: Server = createServer((req, res) => {
       const url = new URL(req.url ?? "/", "http://127.0.0.1")
