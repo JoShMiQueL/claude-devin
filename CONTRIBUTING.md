@@ -5,8 +5,8 @@
 ```
 main      ← releases only. Tags vX.Y.Z. Never work-in-progress.
   │
-  ├── hotfix/<name>   → PR to main → squash → tag vX.Y.Z
-  ├── release/<ver>   → PR to main → squash → tag vX.Y.0
+  ├── hotfix/<name>          → PR to main → squash → release-please tags
+  ├── release-please--main   → bot PR to main → squash → tag + GitHub Release
   │
   └── develop         ← integration branch. Features live here.
         ├── feat/<name>   → PR to develop
@@ -16,7 +16,7 @@ main      ← releases only. Tags vX.Y.Z. Never work-in-progress.
 
 **Rules enforced by CI + branch protection** (you can't bypass them):
 
-- `main` only accepts PRs whose source is `hotfix/*`, `release/*`, or
+- `main` only accepts PRs whose source is `hotfix/*`, `release-please--*`, or
   `develop`. A feature branch PRed straight to main fails the `branch-gate`
   check and cannot merge. This keeps hotfixes and features from mixing —
   `main` is always clean, releaseable history.
@@ -36,24 +36,38 @@ gh pr create --base develop --title "feat: my thing"
 # CI green → squash merge. Branch auto-deletes.
 ```
 
-## Shipping a release
+## Shipping a release (automated via release-please)
+
+Releases are **automated** — you never bump `package.json` or write the
+changelog by hand. Write conventional commits (`feat:`, `fix:`, `perf:`, …)
+and release-please does the rest.
 
 ```bash
-# 1. Cut a release branch off develop
-git checkout -b release/0.5.0 develop
-git push -u origin release/0.5.0
+# 1. Merge develop into main when you're ready to ship a release
+gh pr create --base main --head develop --title "release: merge develop"
 
-# 2. Stabilize on the release branch (fixes PRed to release/0.5.0)
-# 3. When ready, PR the release branch into main
-gh pr create --base main --head release/0.5.0 --title "release: v0.5.0"
+# 2. release-please watches pushes to main. After the merge it opens (or
+#    updates) a `release-please--main` PR containing:
+#      - version bump in package.json (semver from your commit types)
+#      - regenerated CHANGELOG.md
+#      - the release notes that will go on the GitHub Release
+#    Review the proposed version + notes there.
 
-# 4. Squash merge → tag
-git checkout main && git pull
-git tag v0.5.0 && git push origin v0.5.0
+# 3. Merge the release-please PR → it tags vX.Y.Z and publishes the
+#    GitHub Release automatically.
 
-# 5. Merge main back into develop so the release commits aren't lost
+# 4. Merge main back into develop so release commits aren't lost
 git checkout develop && git merge main && git push
 ```
+
+**Commit type → bump**: `feat:` → minor, `fix:`/`perf:` → patch, `feat!:` /
+`BREAKING CHANGE:` → major. Types like `chore:`, `ci:`, `docs:` don't bump.
+
+### If the proposed version is wrong
+
+release-please guesses semver from commit types. To force a specific version
+(e.g. first real release `1.0.0`), edit `.release-please-manifest.json` or add
+a `release-as` footer to a commit. Rarely needed.
 
 ## Emergency hotfix (bug in the released version)
 
@@ -65,9 +79,8 @@ git checkout -b hotfix/login-crash main
 # 3. PR straight to main — hotfix/* is allowed by branch-gate
 gh pr create --base main --title "fix: login crash on token refresh"
 
-# 4. Squash merge → tag the patch
-git checkout main && git pull
-git tag v0.4.1 && git push origin v0.4.1
+# 4. Squash merge. release-please then opens/updates its release PR — merge
+#    that and it tags the patch (e.g. v0.4.1) + publishes the GitHub Release.
 
 # 5. Port the fix into develop so it doesn't regress
 git checkout develop && git merge main && git push
