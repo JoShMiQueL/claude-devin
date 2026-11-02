@@ -31,27 +31,35 @@ const CRED_PATH = join(CONFIG_DIR, "credentials.json")
 
 const USAGE = `claude-devin ${VERSION} — Claude Code on your Devin subscription
 
+claude-devin wraps \`claude\`: it starts a local Anthropic-compatible proxy
+backed by your Devin subscription, then launches the real \`claude\` CLI with
+the environment wired up. After \`claude-devin login\`, use it exactly like
+\`claude\` — same flags, same behavior.
+
 Usage:
   claude-devin [claude args...]   Start Claude Code powered by Devin.
-  claude-devin <command>          Run a management command (below).
+  claude-devin <command>          A claude-devin management command (below).
 
-Commands:
-  login [--manual]      Sign in with Devin (opens the browser; --manual pastes a code).
-  logout                Remove the stored Devin credential.
-  models                List the Devin models available to your account.
-  status                Check that the proxy and credential are healthy.
-  doctor                Diagnose setup problems.
-  install-claude        Install the Claude Code CLI (npm -g) if missing.
-  upgrade               Re-download the latest proxy bundle.
-  --version, -v         Print version.
-  --help, -h            This help.
+Management commands:
+  login [--manual]    Sign in with Devin (opens the browser).
+                      --manual pastes the code instead (headless).
+  logout              Remove the stored Devin credential.
+  models              List the Devin model IDs your account can use.
+  status              Check proxy + credential health.
+  doctor              Diagnose missing deps / credentials.
+  install-claude      Install the \`claude\` CLI if it's missing.
+  upgrade             Re-download the latest proxy bundle.
+  help                Show this help.
+  version             Show the claude-devin version.
 
-Any other arguments are passed through to \`claude\` unchanged — including
-model selection, which is claude's own \`--model\` flag:
-  claude-devin --help                        → claude --help
-  claude-devin resume                        → claude resume
-  claude-devin -p "prompt"                   → claude -p "prompt"
-  claude-devin --model swe-2-high            → claude --model swe-2-high
+Everything else is forwarded to \`claude\` verbatim — including claude's own
+\`--help\`, \`--version\`, and \`--model\` flags:
+
+  claude-devin --help                  → claude --help
+  claude-devin --version               → claude --version
+  claude-devin resume                  → claude resume
+  claude-devin -p "prompt"             → claude -p "prompt"
+  claude-devin --model swe-2-high      → claude --model swe-2-high
   claude-devin --model glm-5-3-high -p "hi"
 
 Environment:
@@ -274,15 +282,17 @@ async function cmdRun(claudeArgs) {
 const argv = process.argv.slice(2)
 const cmd = argv[0]
 
+// Only claude-devin's own verbs are intercepted. Everything else — including
+// flags like --help, --version, -p, --model — is forwarded to `claude`.
 switch (cmd) {
-  case "login":        await cmdLogin(argv.slice(1)); break
-  case "logout":       await cmdLogout(); break
-  case "models":       await cmdModels(); break
-  case "status":       await cmdStatus(); break
-  case "doctor":       await cmdDoctor(); break
+  case "login":          await cmdLogin(argv.slice(1)); break
+  case "logout":         await cmdLogout(); break
+  case "models":         await cmdModels(); break
+  case "status":         await cmdStatus(); break
+  case "doctor":         await cmdDoctor(); break
   case "install-claude": cmdInstallClaude(); break
   case "upgrade":        await cmdUpgrade(); break
-  case "--version": case "-v": case "version": console.log(VERSION); break
-  case "--help": case "-h": case "help": console.log(USAGE); break
-  default:             await cmdRun(argv); break // every other arg is claude's
+  case "help":           console.log(USAGE); break
+  case "version":        console.log(VERSION); break
+  default:               await cmdRun(argv); break // every other arg is claude's
 }
