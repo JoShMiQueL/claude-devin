@@ -11,7 +11,7 @@
  */
 
 import { spawn, spawnSync } from "node:child_process"
-import { existsSync, mkdirSync, writeFileSync, readFileSync } from "node:fs"
+import { existsSync, mkdirSync, writeFileSync, readFileSync, renameSync } from "node:fs"
 import { homedir } from "node:os"
 import { dirname, join, resolve } from "node:path"
 import { fileURLToPath, pathToFileURL } from "node:url"
@@ -273,7 +273,11 @@ async function cmdUpgrade() {
     console.log(`-> fetching ${name}…`)
     const res = await fetch(url, { signal: AbortSignal.timeout(30_000) })
     if (!res.ok) fail(`download failed for ${name} (HTTP ${res.status})`)
-    writeFileSync(dest, await res.text())
+    // Write to a temp file then rename over the target — overwriting the
+    // running cli.mjs in place is unreliable on Windows (file is mmap'd).
+    const tmp = dest + ".new"
+    writeFileSync(tmp, await res.text())
+    renameSync(tmp, dest)
     console.log(`✓ ${name} updated`)
   }
   console.log(`Restart claude-devin to pick up the new version.`)
