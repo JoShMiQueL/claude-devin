@@ -36,23 +36,27 @@ Usage:
   claude-devin <command>          Run a management command (below).
 
 Commands:
-  login [--manual]   Sign in with Devin (opens the browser; --manual pastes a code).
-  logout             Remove the stored Devin credential.
-  models             List the Devin models available to your account.
-  status             Check that the proxy and credential are healthy.
-  doctor             Diagnose setup problems.
-  install-claude     Install the Claude Code CLI (npm -g) if missing.
-  --version, -v      Print version.
-  --help, -h         This help.
+  login [--manual]      Sign in with Devin (opens the browser; --manual pastes a code).
+  logout                Remove the stored Devin credential.
+  models                List the Devin models available to your account.
+  status                Check that the proxy and credential are healthy.
+  doctor                Diagnose setup problems.
+  install-claude        Install the Claude Code CLI (npm -g) if missing.
+  upgrade               Re-download the latest proxy bundle.
+  --version, -v         Print version.
+  --help, -h            This help.
 
-Any other arguments are passed through to \`claude\` unchanged:
-  claude-devin --help          → claude --help
-  claude-devin resume          → claude resume
-  claude-devin -p "prompt"     → claude -p "prompt"
+Any other arguments are passed through to \`claude\` unchanged — including
+model selection, which is claude's own \`--model\` flag:
+  claude-devin --help                        → claude --help
+  claude-devin resume                        → claude resume
+  claude-devin -p "prompt"                   → claude -p "prompt"
+  claude-devin --model swe-2-high            → claude --model swe-2-high
+  claude-devin --model glm-5-3-high -p "hi"
 
 Environment:
   DEVIN_LLM_API_KEY   Devin session token (overrides the stored credential).
-  ANTHROPIC_MODEL     Model UID to use (e.g. swe-2-high, glm-5-3-high).
+  ANTHROPIC_MODEL     Model UID (claude's --model flag wins).
   DEVIN_CLAUDE_PORT   Proxy port (default ${DEFAULT_PORT}).
   XDG_CONFIG_HOME     Config root (default ~/.config).
 `
@@ -206,6 +210,15 @@ async function cmdDoctor() {
   }
 }
 
+async function cmdUpgrade() {
+  const url = `https://raw.githubusercontent.com/JoShMiQueL/claude-devin/main/claude-devin/proxy-bundle.mjs`
+  console.log(`-> fetching latest proxy bundle…`)
+  const res = await fetch(url, { signal: AbortSignal.timeout(30_000) })
+  if (!res.ok) fail(`download failed (HTTP ${res.status})`)
+  writeFileSync(PROXY_BUNDLE, await res.text())
+  console.log(`✓ proxy bundle updated (${PROXY_BUNDLE})`)
+}
+
 function cmdInstallClaude() {
   if (commandExists("claude")) {
     console.log("claude is already installed.")
@@ -240,6 +253,8 @@ async function cmdRun(claudeArgs) {
   // ANTHROPIC_AUTH_TOKEN / apiKeyHelper). A pre-existing ANTHROPIC_API_KEY in
   // the user's environment or settings would clobber our local client key and
   // 401 against the proxy — set BOTH to the same loopback key.
+  // `--model` is claude's own flag and reaches it via claudeArgs, so we don't
+  // intercept it — `claude-devin --model x` ≡ `claude --model x`.
   const env = {
     ...process.env,
     ANTHROPIC_BASE_URL: proxyBase(),
@@ -266,7 +281,8 @@ switch (cmd) {
   case "status":       await cmdStatus(); break
   case "doctor":       await cmdDoctor(); break
   case "install-claude": cmdInstallClaude(); break
+  case "upgrade":        await cmdUpgrade(); break
   case "--version": case "-v": case "version": console.log(VERSION); break
   case "--help": case "-h": case "help": console.log(USAGE); break
-  default:             await cmdRun(argv); break // everything else → claude
+  default:             await cmdRun(argv); break // every other arg is claude's
 }
