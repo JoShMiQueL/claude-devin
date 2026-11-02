@@ -21,10 +21,10 @@ jobs:
         run: |
           head="${{ github.head_ref }}"
           case "$head" in
-            hotfix/*|release/*|develop)
+            hotfix/*|release/*|release-please--*|develop)
               echo "OK: $head may merge to main" ;;
             *)
-              echo "::error::Branch '$head' cannot merge into main. GitFlow: merge feat/fix/chore work into 'develop' first, then release/* or hotfix/* into main."
+              echo "::error::Branch '$head' cannot merge into main. GitFlow: merge feat/fix/chore work into 'develop' first, then release-please/hotfix branches into main."
               exit 1 ;;
           esac
 
