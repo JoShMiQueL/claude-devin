@@ -142,7 +142,12 @@ async function ensureProxy() {
   const deadline = Date.now() + 12_000
   while (Date.now() < deadline) {
     await sleep(250)
-    if (await proxyUp()) return
+    if (await proxyUp()) {
+      // Warm the catalog + user_jwt caches in the background so claude's
+      // first /v1/messages doesn't pay the fetch cost. Fire-and-forget.
+      fetch(`${proxyBase()}/v1/models`, { headers: authHeaders() }).catch(() => {})
+      return
+    }
     if (proxyProc.exitCode !== null) break
   }
   fail(`proxy did not come up on ${proxyBase()}${proxyErr ? ` — ${proxyErr.slice(-400)}` : ""}`)

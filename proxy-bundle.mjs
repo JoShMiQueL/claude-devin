@@ -1451,6 +1451,10 @@ data: {"type":"message_stop"}
   });
   const address = server.address();
   const port = typeof address === "object" && address ? address.port : wantedPort;
+  const apiKey = getApiKey();
+  if (apiKey) {
+    noteCatalog(apiKey).catch(() => {});
+  }
   return { server, port };
 }
 var invokedAsScript = !!process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href && /server\.(ts|mjs|js)$/.test(process.argv[1]);
