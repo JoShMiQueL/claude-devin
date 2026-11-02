@@ -1226,6 +1226,15 @@ var errorBody = (type, message) => ({
   type: "error",
   error: { type, message }
 });
+var FAST_DROP_TOOLS = new Set([
+  "WebFetch",
+  "WebSearch",
+  "Task",
+  "AskUserQuestion",
+  "EnterPlanMode",
+  "ExitPlanMode",
+  "NotebookEdit"
+]);
 function readBody(req) {
   return new Promise((resolvePromise, rejectPromise) => {
     const chunks = [];
@@ -1280,7 +1289,9 @@ async function createServer(options = {}) {
   };
   const handle = async (req, res) => {
     const method = req.method ?? "GET";
-    const path = new URL(req.url ?? "/", "http://127.0.0.1").pathname.replace(/\/+$/, "") || "/";
+    const rawPath = new URL(req.url ?? "/", "http://127.0.0.1").pathname.replace(/\/+$/, "") || "/";
+    const fast = rawPath === "/fast" || rawPath.startsWith("/fast/");
+    const path = fast ? rawPath.slice("/fast".length) || "/" : rawPath;
     if (path === "/health") {
       if (method !== "GET") {
         sendError(res, method, path, 405, "not_found_error", `Method ${method} not allowed`);
@@ -1384,6 +1395,23 @@ async function createServer(options = {}) {
         return;
       }
       throw err;
+    }
+    if (fast) {
+      if (Array.isArray(body.tools)) {
+        body.tools = body.tools.filter((t) => !FAST_DROP_TOOLS.has(String(t.name)));
+      }
+      if (typeof body.max_tokens === "number")
+        body.max_tokens = Math.min(body.max_tokens, 16384);
+      const terse = `
+
+[claude-devin --fast] Be terse: minimal prose; prefer tool calls over explanation; no summaries unless asked.`;
+      if (typeof body.system === "string")
+        body.system += terse;
+      else if (Array.isArray(body.system)) {
+        const last = body.system[body.system.length - 1];
+        if (last && last.type === "text" && typeof last.text === "string")
+          last.text += terse;
+      }
     }
     const converted = anthropicToChat({ ...body, model: modelUid });
     const abort = new AbortController;

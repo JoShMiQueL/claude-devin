@@ -61,6 +61,7 @@ Everything else is forwarded to \`claude\` verbatim — including claude's own
   claude-devin -p "prompt"             → claude -p "prompt"
   claude-devin --model swe-2-high      → claude --model swe-2-high
   claude-devin --model glm-5-3-high -p "hi"
+  --fast              Shorter answers: strips web/plan/subagent tools, terser style.
 
 Environment:
   DEVIN_LLM_API_KEY   Devin session token (overrides the stored credential).
@@ -268,13 +269,15 @@ async function cmdRun(claudeArgs) {
   // 401 against the proxy — set BOTH to the same loopback key.
   // `--model` is claude's own flag and reaches it via claudeArgs, so we don't
   // intercept it — `claude-devin --model x` ≡ `claude --model x`.
+  const fast = claudeArgs.includes("--fast")
+  const args = fast ? claudeArgs.filter((a) => a !== "--fast") : claudeArgs
   const env = {
     ...process.env,
-    ANTHROPIC_BASE_URL: proxyBase(),
+    ANTHROPIC_BASE_URL: proxyBase() + (fast ? "/fast" : ""),
     ANTHROPIC_API_KEY: CLIENT_KEY,
     ANTHROPIC_AUTH_TOKEN: CLIENT_KEY,
   }
-  const claude = spawn("claude", claudeArgs, { stdio: "inherit", env })
+  const claude = spawn("claude", args, { stdio: "inherit", env })
   shuttingDown = false
   const code = await new Promise((r) => claude.on("exit", r))
   shuttingDown = true
