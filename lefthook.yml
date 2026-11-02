@@ -1,0 +1,10 @@
+# Pre-push checks — runs lint + typecheck in ~2s so broken code never reaches
+# origin. Faster than CI red: "agents skip steps," so the gate lives in the
+# hook, not in a doc. Install once with `lefthook install`.
+pre-push:
+  parallel: true
+  commands:
+    lint:
+      run: bun run lint
+    typecheck:
+      run: bun run typecheck
