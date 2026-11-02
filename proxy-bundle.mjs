@@ -1296,7 +1296,12 @@ async function createServer(options = {}) {
   };
   const logRequest = (rid, method, path, status, ms) => {
     const line = `${method} ${path} -> ${status} ${ms}ms [${rid}]`;
-    if (status >= 500)
+    if (path === "/v1/messages") {
+      if (status >= 400)
+        log.warn(line);
+      else
+        log.info(line);
+    } else if (status >= 500)
       log.warn(line);
     else if (status >= 400 && path !== "/api/hello")
       log.info(line);

@@ -135,8 +135,14 @@ export async function createServer(options: ProxyServerOptions = {}): Promise<Pr
   // (health probes from the CLI poll every 250ms on startup).
   const logRequest = (rid: string, method: string, path: string, status: number, ms: number): void => {
     const line = `${method} ${path} -> ${status} ${ms}ms [${rid}]`
-    if (status >= 500) log.warn(line)
-    else if (status >= 400 && path !== "/api/hello") log.info(line) // skip claude's probe noise
+    // /v1/messages is the only request that matters at info level — log it
+    // always (success or failure) so service logs show real traffic, while
+    // health/models probes stay at debug.
+    if (path === "/v1/messages") {
+      if (status >= 400) log.warn(line)
+      else log.info(line)
+    } else if (status >= 500) log.warn(line)
+    else if (status >= 400 && path !== "/api/hello") log.info(line)
     else log.debug(line)
   }
 
