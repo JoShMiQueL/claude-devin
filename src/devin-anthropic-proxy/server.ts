@@ -370,7 +370,6 @@ export async function createServer(options: ProxyServerOptions = {}): Promise<Pr
       let outTok = 0
       let stopReason = "?"
       let blocks = 0
-      const streamStart = Date.now()
       try {
         for await (const event of streamChatEventsAsAnthropic(request)) {
           if (ttft < 0 && event.event === "content_block_start") ttft = Date.now() - t0

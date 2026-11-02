@@ -14,9 +14,10 @@
   ],
   "scripts": {
     "build": "bun build src/devin-anthropic-proxy/bundle-entry.ts --target node --outfile proxy-bundle.mjs",
+    "lint": "oxlint --deny-warnings src test",
     "typecheck": "tsc --noEmit",
     "test": "bun test",
-    "check": "bun run typecheck && bun test"
+    "check": "bun run lint && bun run typecheck && bun test"
   },
   "keywords": [
     "claude-code",
@@ -40,6 +41,7 @@
   "bugs": "https://github.com/JoShMiQueL/claude-devin/issues",
   "devDependencies": {
     "@types/bun": "1.4.4",
+    "oxlint": "^1.90.0",
     "typescript": "7.0.2"
   },
   "engines": {
