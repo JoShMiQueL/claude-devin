@@ -10,15 +10,15 @@
   "files": [
     "cli.mjs",
     "proxy-bundle.mjs",
-    "src/",
-    ".claude-plugin/",
-    "commands/"
+    "src/"
   ],
   "scripts": {
     "build": "bun build src/devin-anthropic-proxy/bundle-entry.ts --target node --outfile proxy-bundle.mjs",
-    "typecheck": "tsc --noEmit",
+    "lint": "oxlint -c .oxlintrc.json --deny-warnings src test",
+    "typecheck": "bun check",
     "test": "bun test",
-    "check": "bun run typecheck && bun test"
+    "verify": "bun run lint && bun run typecheck && bun test",
+    "prepare": "lefthook install || true"
   },
   "keywords": [
     "claude-code",
@@ -42,6 +42,8 @@
   "bugs": "https://github.com/JoShMiQueL/claude-devin/issues",
   "devDependencies": {
     "@types/bun": "1.4.4",
+    "lefthook": "^2.2.2",
+    "oxlint": "^1.90.0",
     "typescript": "7.0.2"
   },
   "engines": {

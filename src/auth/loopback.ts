@@ -27,6 +27,14 @@ export interface CallbackServer {
  */
 const CALLBACK_TIMEOUT_MS = 5 * 60 * 1000
 
+/** Render the minimal success/error page shown in the browser after login. */
+const page = (title: string, body: string, status = 200) =>
+  new Response(
+    `<!doctype html><html><head><meta charset="utf-8"><title>${title}</title></head>` +
+      `<body style="font-family:system-ui;margin:3rem"><h1>${title}</h1><p>${body}</p></body></html>`,
+    { status, headers: { "Content-Type": "text/html; charset=utf-8" } },
+  )
+
 /** Bind a one-shot HTTP server and wait for the authorization code. */
 export function startCallbackServer(state: string, timeoutMs = CALLBACK_TIMEOUT_MS): Promise<CallbackServer> {
   return new Promise((resolve, reject) => {
@@ -57,12 +65,6 @@ export function startCallbackServer(state: string, timeoutMs = CALLBACK_TIMEOUT_
         port: 0,
         async fetch(req) {
           const url = new URL(req.url)
-          const page = (title: string, body: string, status = 200) =>
-            new Response(
-              `<!doctype html><html><head><meta charset="utf-8"><title>${title}</title></head>` +
-                `<body style="font-family:system-ui;margin:3rem"><h1>${title}</h1><p>${body}</p></body></html>`,
-              { status, headers: { "Content-Type": "text/html; charset=utf-8" } },
-            )
 
           if (url.pathname !== CALLBACK_PATH) {
             return page("Not found", "", 404)

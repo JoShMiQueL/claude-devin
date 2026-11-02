@@ -154,7 +154,7 @@ export function anthropicToChat(req: AnthropicRequest): ConvertedChat {
           const text = toolResultText(block.content)
           const content: Exclude<ChatContent, string> = [
             ...(block.is_error ? [textPart("(tool error)\n" + text)] : [textPart(text)]),
-            ...toolResultImages(block.content).map((image) => ({ type: "image" as const, ...image })),
+            ...toolResultImages(block.content).map((image) => Object.assign({ type: "image" as const }, image)),
           ]
           messages.push({ role: "tool", content, tool_call_id: block.tool_use_id })
         }
