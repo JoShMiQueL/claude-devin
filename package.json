@@ -1,36 +1,32 @@
 {
   "$schema": "https://json.schemastore.org/package.json",
-  "name": "opencode-devin",
-  "version": "0.2.1",
-  "description": "OpenCode v2 plugin: connect your Devin subscription to opencode with native /connect login and devin/* models",
+  "name": "claude-devin",
+  "version": "0.1.0",
+  "description": "Run Claude Code on your Devin subscription — drop-in `claude` wrapper with a local Anthropic-compatible proxy",
   "type": "module",
-  "main": "./dist/index.js",
-  "exports": {
-    ".": {
-      "types": "./dist/index.d.ts",
-      "default": "./dist/index.js"
-    },
-    "./provider": {
-      "types": "./dist/provider.d.ts",
-      "default": "./dist/provider.js"
-    }
+  "bin": {
+    "claude-devin": "./cli.mjs"
   },
   "files": [
-    "dist"
+    "cli.mjs",
+    "proxy-bundle.mjs",
+    "src/",
+    ".claude-plugin/",
+    "commands/"
   ],
   "scripts": {
-    "build": "node scripts/build.mjs",
-    "build:clean": "node -e \"fs.rmSync('dist',{recursive:true,force:true})\" && tsc",
-    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.test.json",
+    "build": "bun build src/devin-anthropic-proxy/bundle-entry.ts --target node --outfile proxy-bundle.mjs",
+    "typecheck": "tsc --noEmit",
     "test": "bun test",
-    "prepublishOnly": "npm run build:clean"
+    "check": "bun run typecheck && bun test"
   },
   "keywords": [
-    "opencode",
-    "opencode-plugin",
-    "opencode-v2",
+    "claude-code",
     "devin",
     "cognition",
+    "anthropic",
+    "proxy",
+    "cascade",
     "windsurf"
   ],
   "license": "MIT",
@@ -40,17 +36,15 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/JoShMiQueL/opencode-devin.git"
+    "url": "git+https://github.com/JoShMiQueL/claude-devin.git"
   },
-  "homepage": "https://github.com/JoShMiQueL/opencode-devin#readme",
-  "bugs": "https://github.com/JoShMiQueL/opencode-devin/issues",
-  "dependencies": {
-    "@ai-sdk/provider": "3.0.8",
-    "@opencode/plugin": "2.0.16"
-  },
+  "homepage": "https://github.com/JoShMiQueL/claude-devin#readme",
+  "bugs": "https://github.com/JoShMiQueL/claude-devin/issues",
   "devDependencies": {
     "@types/bun": "1.4.4",
-    "protobufjs": "8.8.1",
     "typescript": "7.0.2"
+  },
+  "engines": {
+    "node": ">=18"
   }
 }

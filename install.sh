@@ -15,9 +15,9 @@ need node   # Node >=18
 
 mkdir -p "$APP_DIR" "$BIN_DIR"
 
-echo "→ downloading claude-devin ${VERSION:-latest}…"
-curl -fsSL "${BASE}/claude-devin/cli.mjs"          -o "${APP_DIR}/cli.mjs"
-curl -fsSL "${BASE}/claude-devin/proxy-bundle.mjs" -o "${APP_DIR}/proxy-bundle.mjs"
+echo "→ downloading claude-devin…"
+curl -fsSL "${BASE}/cli.mjs"          -o "${APP_DIR}/cli.mjs"
+curl -fsSL "${BASE}/proxy-bundle.mjs" -o "${APP_DIR}/proxy-bundle.mjs"
 
 cat > "${BIN_DIR}/claude-devin" <<EOF
 #!/usr/bin/env bash

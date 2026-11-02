@@ -1,17 +1,17 @@
-import { afterEach, describe, expect, test } from "bun:test"
+﻿import { afterEach, describe, expect, test } from "bun:test"
 
-import { clearCachedUserJwt } from "../../src/protocol/auth.ts"
+import { clearCachedUserJwt } from "../src/protocol/auth.ts"
 import {
   listAnthropicModels,
   ModelNotFoundError,
   resolveModelId,
-} from "../../src/devin-anthropic-proxy/models.ts"
-import { catalogReply, modelConfig, realFetch, stubFetch, uniqueHost } from "../helpers.ts"
+} from "../src/devin-anthropic-proxy/models.ts"
+import { catalogReply, modelConfig, realFetch, stubFetch, uniqueHost } from "./helpers.ts"
 
 /**
  * The catalog seam is exercised through the wire: stubFetch serves a synthetic
  * GetCascadeModelConfigs reply (plus the GetUserJwt mint it needs first), so
- * these tests run the real catalog decoder — no production-code seams needed.
+ * these tests run the real catalog decoder â€” no production-code seams needed.
  * A unique (apiKey, host) pair per test dodges the 10-minute catalog cache.
  */
 let seq = 0

@@ -1,93 +1,99 @@
-import { describe, expect, test } from "bun:test"
+﻿import { afterAll, beforeAll, describe, expect, test } from "bun:test"
+import { mkdtempSync, rmSync } from "node:fs"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
+import type { Server } from "node:http"
 
 /**
- * Opt-in end-to-end check against Cognition's live Cascade API.
+ * Opt-in live smoke test: boots the real proxy and replays a streaming
+ * /v1/messages request end-to-end against Cognition's Cascade backend.
  *
- * This is the only test that can catch a field number drifting, because it is
- * the only one that talks to the real server. Everything else either round-trips
- * our own encoder against our own decoder or compares against protobufjs, so it
- * proves the wire format is genuine protobuf but says nothing about whether
- * Cognition still uses these numbers.
+ *   DEVIN_LLM_API_KEY=devin-session-token$... bun test test/devin-anthropic-proxy/live.test.ts
  *
- * It needs a real credential and is therefore skipped unless one is present:
- *
- *   DEVIN_LLM_API_KEY=devin-session-token$... bun test test/live.test.ts
- *
- * See test/fixtures/README.md for how to turn a passing run into a committed
- * capture, which is what makes this checkable in CI without a secret.
+ * Skipped entirely when the env var is absent. No fetch stubbing here â€” the
+ * point is to hit the real service.
  */
-const API_KEY = process.env.DEVIN_LLM_API_KEY
-const HOST = process.env.DEVIN_API_SERVER ?? "https://server.codeium.com"
-const RUN_LIVE = Boolean(API_KEY?.startsWith("devin-session-token$"))
 
-// bun's `describe` takes no options, so skip by not registering a live test.
+const API_KEY = process.env.DEVIN_LLM_API_KEY
+const RUN_LIVE = Boolean(API_KEY)
+
 const maybe = RUN_LIVE ? test : test.skip
 
 if (!RUN_LIVE) {
-  console.log("[live] skipped: set DEVIN_LLM_API_KEY to a devin-session-token$... value to run")
+  console.log("[live-proxy] skipped: set DEVIN_LLM_API_KEY to run the live proxy smoke test")
 }
 
-describe("live Cascade API", () => {
-  maybe("mints a user_jwt and reads a non-empty model catalog", async () => {
-    const { mintUserJwt } = await import("../src/protocol/auth.ts")
-    const { getCachedCatalog } = await import("../src/protocol/catalog.ts")
+let proxy: { server: Server; port: number }
+let base = ""
+let dir = ""
+let savedXdg: string | undefined
+let savedKey: string | undefined
 
-    const { jwt, expiresAt } = await mintUserJwt(API_KEY!, HOST)
-    expect(jwt.split(".")).toHaveLength(3)
-    expect(expiresAt).toBeGreaterThan(Math.floor(Date.now() / 1000))
+beforeAll(async () => {
+  if (!RUN_LIVE) return
+  savedXdg = process.env.XDG_CONFIG_HOME
+  savedKey = process.env.DEVIN_LLM_API_KEY
+  dir = mkdtempSync(join(tmpdir(), "devin-claude-live-"))
+  process.env.XDG_CONFIG_HOME = dir
+  process.env.DEVIN_LLM_API_KEY = API_KEY
+  const { createServer } = await import("../src/devin-anthropic-proxy/server.ts")
+  const { LOCAL_CLIENT_KEY } = await import("../src/devin-anthropic-proxy/auth.ts")
+  proxy = await createServer({ port: 0, clientKey: LOCAL_CLIENT_KEY })
+  base = `http://127.0.0.1:${proxy.port}`
+})
 
-    const catalog = await getCachedCatalog(API_KEY!, HOST)
-    // getCachedCatalog swallows failures and returns null, so this distinguishes
-    // "the request worked" from "the field numbers are wrong".
-    expect(catalog).not.toBeNull()
+afterAll(async () => {
+  if (!RUN_LIVE) return
+  await new Promise<void>((resolvePromise) => proxy.server.close(() => resolvePromise()))
+  if (savedXdg === undefined) delete process.env.XDG_CONFIG_HOME
+  else process.env.XDG_CONFIG_HOME = savedXdg
+  if (savedKey === undefined) delete process.env.DEVIN_LLM_API_KEY
+  else process.env.DEVIN_LLM_API_KEY = savedKey
+  rmSync(dir, { recursive: true, force: true })
+})
 
-    const entries = [...catalog!.byUid.values()]
-    expect(entries.length).toBeGreaterThan(0)
+describe("live proxy", () => {
+  maybe("POST /v1/messages streams a real Anthropic SSE reply", async () => {
+    const { LOCAL_CLIENT_KEY } = await import("../src/devin-anthropic-proxy/auth.ts")
+    const res = await fetch(`${base}/v1/messages`, {
+      method: "POST",
+      headers: { "x-api-key": LOCAL_CLIENT_KEY, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "claude-sonnet-4-5",
+        messages: [{ role: "user", content: [{ type: "text", text: "Say OK" }] }],
+        max_tokens: 8,
+        stream: true,
+      }),
+    })
+    expect(res.status).toBe(200)
+    expect(res.headers.get("content-type")).toContain("text/event-stream")
 
-    // Every entry must have carried the fields the decoder reads.
-    for (const entry of entries) {
-      expect(typeof entry.modelUid).toBe("string")
-      expect(entry.modelUid.length).toBeGreaterThan(0)
-      expect(typeof entry.disabled).toBe("boolean")
-      expect(typeof entry.contextWindow).toBe("number")
+    const wire = await res.text()
+    const events: Array<{ event: string; data: Record<string, unknown> }> = []
+    for (const frame of wire.split("\n\n")) {
+      const trimmed = frame.trim()
+      if (!trimmed) continue
+      const name = trimmed.match(/^event: (.+)$/m)?.[1]
+      const dataLine = trimmed.match(/^data: (.+)$/m)?.[1]
+      if (name && dataLine) events.push({ event: name, data: JSON.parse(dataLine) })
     }
 
-    const enabled = entries.filter((e) => !e.disabled)
-    expect(enabled.length).toBeGreaterThan(0)
+    const names = events.map((e) => e.event)
+    // First event is always message_start; the stream always ends message_stop.
+    expect(names[0]).toBe("message_start")
+    expect(names.at(-1)).toBe("message_stop")
+    // A text reply carries at least one text_delta.
+    const deltas = events.filter((e) => e.event === "content_block_delta")
+    expect(deltas.some((e) => (e.data.delta as { type?: string }).type === "text_delta")).toBe(true)
+    // The terminal message_delta reports a stop_reason.
+    const messageDelta = events.find((e) => e.event === "message_delta")
+    expect(messageDelta).toBeDefined()
+    expect((messageDelta!.data.delta as { stop_reason?: string }).stop_reason).toBeTruthy()
 
-    // Pricing is field 32 in a repeated message; if that number drifted, the
-    // decoder would silently leave it undefined.
-    const priced = entries.filter((e) => e.pricing)
-    console.log(
-      `  live catalog: ${entries.length} models, ${enabled.length} enabled, ${priced.length} with pricing`,
-    )
-  }, 60_000)
-
-  maybe("streams a chat completion end to end", async () => {
-    const { streamChatEvents } = await import("../src/protocol/chat.ts")
-    const { createDevinProvider } = await import("../src/provider.ts")
-
-    const sdk = createDevinProvider({ apiKey: API_KEY!, baseURL: HOST })
-    const catalog = await import("../src/protocol/catalog.ts").then((m) =>
-      m.getCachedCatalog(API_KEY!, HOST),
-    )
-    const modelId = [...catalog!.byUid.values()].find((e) => !e.disabled)?.modelUid
-    expect(modelId).toBeTruthy()
-
-    const model = sdk.languageModel(modelId!)
-    const { stream } = await model.doStream({
-      prompt: [{ role: "user", content: [{ type: "text", text: "Reply with the single word: pong" }] }],
-    } as never)
-
-    const text: string[] = []
-    let sawFinish = false
-    for await (const part of stream) {
-      if (part.type === "text-delta") text.push(part.delta)
-      if (part.type === "finish") sawFinish = true
-    }
-
-    expect(sawFinish).toBe(true)
-    expect(text.join("").length).toBeGreaterThan(0)
-    console.log(`  live reply: ${JSON.stringify(text.join("").slice(0, 120))}`)
+    const text = deltas
+      .map((e) => (e.data.delta as { text?: string }).text ?? "")
+      .join("")
+    console.log(`  live proxy reply: ${JSON.stringify(text.slice(0, 80))}`)
+    expect(text.length).toBeGreaterThan(0)
   }, 120_000)
 })
