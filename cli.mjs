@@ -519,17 +519,22 @@ async function cmdRun(claudeArgs) {
   const startedAt = Date.now()
   const code = await new Promise((r) => claude.on("exit", r))
 
-  // Session-end marker — pairs with the `session …` line logged at start so
-  // `service logs` shows how long each invocation lasted.
-  fetch(`${proxyBase()}/mark`, {
-    method: "POST",
-    headers: { ...authHeaders(), "Content-Type": "application/json" },
-    body: JSON.stringify({
-      session: sessionId + "-end",
-      ms: Date.now() - startedAt,
-      exit: code ?? 0,
-    }),
-  }).catch(() => {})
+  // Session-end marker — pairs with the `session …` line logged at start.
+  // Await with a short timeout: the fetch must land before process.exit.
+  try {
+    await Promise.race([
+      fetch(`${proxyBase()}/mark`, {
+        method: "POST",
+        headers: { ...authHeaders(), "Content-Type": "application/json" },
+        body: JSON.stringify({
+          session: sessionId + "-end",
+          ms: Date.now() - startedAt,
+          exit: code ?? 0,
+        }),
+      }),
+      sleep(1500),
+    ])
+  } catch {}
   process.exit(code ?? 0)
 }
 
