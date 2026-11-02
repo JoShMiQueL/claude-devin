@@ -11,13 +11,22 @@
  */
 
 import { spawn, spawnSync } from "node:child_process"
-import { existsSync, mkdirSync, writeFileSync } from "node:fs"
+import { existsSync, mkdirSync, writeFileSync, readFileSync } from "node:fs"
 import { homedir } from "node:os"
 import { dirname, join, resolve } from "node:path"
 import { fileURLToPath, pathToFileURL } from "node:url"
 import { createInterface } from "node:readline"
 
-const VERSION = "0.1.0"
+// Version: read package.json next to cli.mjs when present (repo checkout);
+// fall back to the stamped value for installed copies (no package.json there).
+const __dir0 = dirname(fileURLToPath(import.meta.url))
+const VERSION = (() => {
+  try {
+    const p = join(__dir0, "package.json")
+    if (existsSync(p)) return JSON.parse(readFileSync(p, "utf8")).version ?? "0.0.0"
+  } catch {}
+  return "0.3.1" // stamped at release time — keep in sync with package.json
+})()
 const DEFAULT_PORT = 42100
 const CLIENT_KEY = "devin-claude-local"
 
@@ -225,12 +234,20 @@ async function cmdDoctor() {
 }
 
 async function cmdUpgrade() {
-  const url = `https://raw.githubusercontent.com/JoShMiQueL/claude-devin/main/claude-devin/proxy-bundle.mjs`
-  console.log(`-> fetching latest proxy bundle…`)
-  const res = await fetch(url, { signal: AbortSignal.timeout(30_000) })
-  if (!res.ok) fail(`download failed (HTTP ${res.status})`)
-  writeFileSync(PROXY_BUNDLE, await res.text())
-  console.log(`✓ proxy bundle updated (${PROXY_BUNDLE})`)
+  const base = `https://raw.githubusercontent.com/JoShMiQueL/claude-devin/main`
+  const files = [
+    [`${base}/proxy-bundle.mjs`, PROXY_BUNDLE],
+    [`${base}/cli.mjs`, fileURLToPath(import.meta.url)],
+  ]
+  for (const [url, dest] of files) {
+    const name = dest.split(/[\\/]/).pop()
+    console.log(`-> fetching ${name}…`)
+    const res = await fetch(url, { signal: AbortSignal.timeout(30_000) })
+    if (!res.ok) fail(`download failed for ${name} (HTTP ${res.status})`)
+    writeFileSync(dest, await res.text())
+    console.log(`✓ ${name} updated`)
+  }
+  console.log(`Restart claude-devin to pick up the new version.`)
 }
 
 function cmdInstallClaude() {
