@@ -36,6 +36,12 @@ const errorBody = (type: string, message: string): JsonObject => ({
   error: { type, message },
 })
 
+/** Tools stripped in --fast mode: web + planning + subagent tools claude rarely needs. */
+const FAST_DROP_TOOLS = new Set([
+  "WebFetch", "WebSearch", "Task", "AskUserQuestion",
+  "EnterPlanMode", "ExitPlanMode", "NotebookEdit",
+])
+
 export interface ProxyServerOptions {
   port?: number
   clientKey?: string
@@ -114,7 +120,9 @@ export async function createServer(options: ProxyServerOptions = {}): Promise<Pr
 
   const handle = async (req: IncomingMessage, res: ServerResponse): Promise<void> => {
     const method = req.method ?? "GET"
-    const path = (new URL(req.url ?? "/", "http://127.0.0.1").pathname.replace(/\/+$/, "") || "/")
+    const rawPath = (new URL(req.url ?? "/", "http://127.0.0.1").pathname.replace(/\/+$/, "") || "/")
+    const fast = rawPath === "/fast" || rawPath.startsWith("/fast/")
+    const path = fast ? rawPath.slice("/fast".length) || "/" : rawPath
 
     // --- unauthenticated route ---
     if (path === "/health") {
@@ -247,6 +255,19 @@ export async function createServer(options: ProxyServerOptions = {}): Promise<Pr
         return
       }
       throw err
+    }
+
+    if (fast) {
+      if (Array.isArray(body.tools)) {
+        body.tools = body.tools.filter((t) => !FAST_DROP_TOOLS.has(String((t as { name?: string }).name)))
+      }
+      if (typeof body.max_tokens === "number") body.max_tokens = Math.min(body.max_tokens, 16_384)
+      const terse = "\n\n[claude-devin --fast] Be terse: minimal prose; prefer tool calls over explanation; no summaries unless asked."
+      if (typeof body.system === "string") body.system += terse
+      else if (Array.isArray(body.system)) {
+        const last = body.system[body.system.length - 1]
+        if (last && last.type === "text" && typeof last.text === "string") last.text += terse
+      }
     }
 
     const converted = anthropicToChat({ ...body, model: modelUid })
