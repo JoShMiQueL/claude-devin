@@ -471,6 +471,13 @@ async function cmdRun(claudeArgs) {
     // Our proxy can't serve server-side auto-mode classifier checks — tell
     // claude to use its own (billed) classifier instead of warning about it.
     CLAUDE_CODE_AUTO_MODE_SERVER: process.env.CLAUDE_CODE_AUTO_MODE_SERVER ?? "0",
+    // The auto-mode classifier calls a separate model (default: claude-sonnet-5)
+    // to judge each tool call — on our backend that model doesn't exist, so
+    // every action pays a 502 retry chain. Run the classifier on the Devin
+    // model instead (v2.1.302+); users on older claude versions should pass
+    // --permission-mode acceptEdits/bypassPermissions themselves.
+    CLAUDE_CODE_AUTO_MODE_MODEL:
+      process.env.CLAUDE_CODE_AUTO_MODE_MODEL ?? "swe-2-high",
     // Claude Code doesn't know Devin model IDs; declare the real window so it
     // stops warning "context assumed to be 200k" (swe-2-high is ~200k anyway).
     CLAUDE_CODE_MAX_CONTEXT_TOKENS:
