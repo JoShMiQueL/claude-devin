@@ -25,7 +25,7 @@ const VERSION = (() => {
     const p = join(__dir0, "package.json")
     if (existsSync(p)) return JSON.parse(readFileSync(p, "utf8")).version ?? "0.0.0"
   } catch {}
-  return "0.3.2" // stamped at release time — keep in sync with package.json
+  return "0.4.0" // stamped at release time — keep in sync with package.json
 })()
 const DEFAULT_PORT = 42100
 const CLIENT_KEY = "devin-claude-local"
