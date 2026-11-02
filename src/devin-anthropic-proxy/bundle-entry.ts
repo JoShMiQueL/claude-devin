@@ -17,7 +17,7 @@ export {
 } from "./auth.ts"
 
 // When run directly (`node proxy-bundle.mjs`), boot the server.
-import { createServer as bootServer } from "./server.ts"
+import { createServer as bootServer, log } from "./server.ts"
 import { getApiKey as readKey, LOCAL_CLIENT_KEY as KEY } from "./auth.ts"
 import { resolve } from "node:path"
 import { pathToFileURL } from "node:url"
@@ -31,12 +31,12 @@ if (isMain) {
   const port = Number(process.env.DEVIN_CLAUDE_PORT) || 42100
   const clientKey = process.env.DEVIN_CLAUDE_CLIENT_KEY || KEY
   bootServer({ port, clientKey })
-    .then(({ port: bound }) => console.log(`[devin-proxy] listening on http://127.0.0.1:${bound}`))
+    .then(({ port: bound }) => log.info(`listening on http://127.0.0.1:${bound}`))
     .catch((err) => {
-      console.error(`[devin-proxy] failed to start: ${(err as Error).message}`)
+      log.error(`failed to start: ${(err as Error).message}`)
       process.exit(1)
     })
   if (!readKey()) {
-    console.warn("[devin-proxy] warning: no Devin credential — run `claude-devin login`")
+    log.warn("no Devin credential — run `claude-devin login`")
   }
 }

@@ -29,6 +29,29 @@ import { CloudChatError, type StreamChatRequest } from "../protocol/chat.ts"
 const DEFAULT_PORT = 42_100
 const MAX_BODY_BYTES = 32 * 1024 * 1024
 
+// --- logging ---------------------------------------------------------------
+// Levels: error < warn < info < debug. DEVIN_CLAUDE_LOG_LEVEL selects the
+// threshold; default "info" keeps startup + abnormal requests + upstream
+// errors, without the per-request noise (health probes poll every 250ms).
+type LogLevel = "error" | "warn" | "info" | "debug"
+const LOG_ORDER: Record<LogLevel, number> = { error: 0, warn: 1, info: 2, debug: 3 }
+const LOG_THRESHOLD: number =
+  LOG_ORDER[(process.env.DEVIN_CLAUDE_LOG_LEVEL ?? "info").toLowerCase() as LogLevel] ??
+  LOG_ORDER.info
+
+function logAt(level: LogLevel, msg: string): void {
+  if (LOG_ORDER[level] > LOG_THRESHOLD) return
+  const line = `[${new Date().toISOString()}] [devin-proxy] ${level.toUpperCase()} ${msg}`
+  if (level === "error") console.error(line)
+  else console.log(line)
+}
+export const log = {
+  error: (m: string) => logAt("error", m),
+  warn: (m: string) => logAt("warn", m),
+  info: (m: string) => logAt("info", m),
+  debug: (m: string) => logAt("debug", m),
+}
+
 type JsonObject = Record<string, unknown>
 
 const errorBody = (type: string, message: string): JsonObject => ({
@@ -103,15 +126,20 @@ export async function createServer(options: ProxyServerOptions = {}): Promise<Pr
     }
   }
 
-  const log = (method: string, path: string, status: number): void => {
-    console.log(`[devin-proxy] ${method} ${path} -> ${status}`)
+  // Per-request line: 5xx/upstream failures are warn-worthy; the rest is debug
+  // noise (health probes from the CLI poll every 250ms on startup).
+  const logRequest = (method: string, path: string, status: number): void => {
+    const line = `${method} ${path} -> ${status}`
+    if (status >= 500) log.warn(line)
+    else if (status >= 400 && path !== "/api/hello") log.info(line) // skip claude's probe noise
+    else log.debug(line)
   }
 
   const sendJson = (res: ServerResponse, method: string, path: string, status: number, body: JsonObject): void => {
     const payload = JSON.stringify(body)
     res.writeHead(status, { "Content-Type": "application/json", "Content-Length": Buffer.byteLength(payload) })
     res.end(payload)
-    log(method, path, status)
+    logRequest(method, path, status)
   }
 
   const sendError = (res: ServerResponse, method: string, path: string, status: number, type: string, message: string): void => {
@@ -165,8 +193,8 @@ export async function createServer(options: ProxyServerOptions = {}): Promise<Pr
               : "none"
       const fp = (s: string | null) =>
         s === null ? "null" : `len=${s.length} head="${s.slice(0, 6)}" tail="${s.slice(-4)}"`
-      console.error(
-        `[devin-proxy] 401 auth on ${path}: header=${whichHeader} ${presentedKey === null ? "absent" : `mismatch ${fp(presentedKey)} (expected ${fp(clientKey)})`}`,
+      log.warn(
+        `401 auth on ${path}: header=${whichHeader} ${presentedKey === null ? "absent" : `mismatch ${fp(presentedKey)} (expected ${fp(clientKey)})`}`,
       )
       sendError(res, method, path, 401, "authentication_error", "invalid x-api-key")
       return
@@ -289,13 +317,14 @@ export async function createServer(options: ProxyServerOptions = {}): Promise<Pr
         "Cache-Control": "no-cache",
         Connection: "keep-alive",
       })
-      log(method, path, 200)
+      logRequest(method, path, 200)
       try {
         for await (const event of streamChatEventsAsAnthropic(request)) {
           res.write(sseSerialize(event))
         }
       } catch (err) {
         const e = err as Error
+        log.warn(`stream error on ${method} ${path} model=${body.model}: ${e.message.slice(0, 300)}`)
         const type =
           e instanceof ModelNotFoundError
             ? "invalid_request_error"
@@ -318,6 +347,9 @@ export async function createServer(options: ProxyServerOptions = {}): Promise<Pr
       const e = err as Error
       const status = e instanceof ModelNotFoundError ? 400 : e instanceof CloudChatError ? 502 : 500
       const type = e instanceof ModelNotFoundError ? "invalid_request_error" : "api_error"
+      if (status >= 500) {
+        log.warn(`upstream error on ${method} ${path} model=${body.model} -> ${status}: ${e.message.slice(0, 300)}`)
+      }
       sendError(res, method, path, status, type, e.message)
     }
   }
@@ -367,9 +399,9 @@ if (invokedAsScript && process.env.NODE_ENV !== "test") {
   const port = Number(process.env.DEVIN_CLAUDE_PORT) || DEFAULT_PORT
   const clientKey = process.env.DEVIN_CLAUDE_CLIENT_KEY || LOCAL_CLIENT_KEY
   createServer({ port, clientKey })
-    .then(({ port: bound }) => console.log(`[devin-proxy] listening on http://127.0.0.1:${bound}`))
+    .then(({ port: bound }) => log.info(`listening on http://127.0.0.1:${bound}`))
     .catch((err) => {
-      console.error(`[devin-proxy] failed to start: ${(err as Error).message}`)
+      log.error(`failed to start: ${(err as Error).message}`)
       process.exit(1)
     })
 }

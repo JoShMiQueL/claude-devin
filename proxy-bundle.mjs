@@ -1222,6 +1222,23 @@ function countTokens(req) {
 // src/devin-anthropic-proxy/server.ts
 var DEFAULT_PORT = 42100;
 var MAX_BODY_BYTES = 32 * 1024 * 1024;
+var LOG_ORDER = { error: 0, warn: 1, info: 2, debug: 3 };
+var LOG_THRESHOLD = LOG_ORDER[(process.env.DEVIN_CLAUDE_LOG_LEVEL ?? "info").toLowerCase()] ?? LOG_ORDER.info;
+function logAt(level, msg) {
+  if (LOG_ORDER[level] > LOG_THRESHOLD)
+    return;
+  const line = `[${new Date().toISOString()}] [devin-proxy] ${level.toUpperCase()} ${msg}`;
+  if (level === "error")
+    console.error(line);
+  else
+    console.log(line);
+}
+var log = {
+  error: (m) => logAt("error", m),
+  warn: (m) => logAt("warn", m),
+  info: (m) => logAt("info", m),
+  debug: (m) => logAt("debug", m)
+};
 var errorBody = (type, message) => ({
   type: "error",
   error: { type, message }
@@ -1275,14 +1292,20 @@ async function createServer(options = {}) {
         state.catalogSize = catalog.byUid.size;
     } catch {}
   };
-  const log = (method, path, status) => {
-    console.log(`[devin-proxy] ${method} ${path} -> ${status}`);
+  const logRequest = (method, path, status) => {
+    const line = `${method} ${path} -> ${status}`;
+    if (status >= 500)
+      log.warn(line);
+    else if (status >= 400 && path !== "/api/hello")
+      log.info(line);
+    else
+      log.debug(line);
   };
   const sendJson = (res, method, path, status, body) => {
     const payload = JSON.stringify(body);
     res.writeHead(status, { "Content-Type": "application/json", "Content-Length": Buffer.byteLength(payload) });
     res.end(payload);
-    log(method, path, status);
+    logRequest(method, path, status);
   };
   const sendError = (res, method, path, status, type, message) => {
     sendJson(res, method, path, status, errorBody(type, message));
@@ -1317,7 +1340,7 @@ async function createServer(options = {}) {
     if (presentedKey !== clientKey) {
       const whichHeader = req.headers["x-api-key"] ? "x-api-key" : req.headers["anthropic-api-key"] ? "anthropic-api-key" : req.headers["api-key"] ? "api-key" : req.headers.authorization ? "authorization" : "none";
       const fp = (s) => s === null ? "null" : `len=${s.length} head="${s.slice(0, 6)}" tail="${s.slice(-4)}"`;
-      console.error(`[devin-proxy] 401 auth on ${path}: header=${whichHeader} ${presentedKey === null ? "absent" : `mismatch ${fp(presentedKey)} (expected ${fp(clientKey)})`}`);
+      log.warn(`401 auth on ${path}: header=${whichHeader} ${presentedKey === null ? "absent" : `mismatch ${fp(presentedKey)} (expected ${fp(clientKey)})`}`);
       sendError(res, method, path, 401, "authentication_error", "invalid x-api-key");
       return;
     }
@@ -1431,13 +1454,14 @@ async function createServer(options = {}) {
         "Cache-Control": "no-cache",
         Connection: "keep-alive"
       });
-      log(method, path, 200);
+      logRequest(method, path, 200);
       try {
         for await (const event of streamChatEventsAsAnthropic(request)) {
           res.write(sseSerialize(event));
         }
       } catch (err) {
         const e = err;
+        log.warn(`stream error on ${method} ${path} model=${body.model}: ${e.message.slice(0, 300)}`);
         const type = e instanceof ModelNotFoundError ? "invalid_request_error" : e instanceof CloudChatError ? "api_error" : "api_error";
         res.write(`event: error
 data: ${JSON.stringify(errorBody(type, e.message))}
@@ -1460,6 +1484,9 @@ data: {"type":"message_stop"}
       const e = err;
       const status = e instanceof ModelNotFoundError ? 400 : e instanceof CloudChatError ? 502 : 500;
       const type = e instanceof ModelNotFoundError ? "invalid_request_error" : "api_error";
+      if (status >= 500) {
+        log.warn(`upstream error on ${method} ${path} model=${body.model} -> ${status}: ${e.message.slice(0, 300)}`);
+      }
       sendError(res, method, path, status, type, e.message);
     }
   };
@@ -1489,8 +1516,8 @@ var invokedAsScript = !!process.argv[1] && import.meta.url === pathToFileURL(res
 if (invokedAsScript && true) {
   const port = Number(process.env.DEVIN_CLAUDE_PORT) || DEFAULT_PORT;
   const clientKey = process.env.DEVIN_CLAUDE_CLIENT_KEY || LOCAL_CLIENT_KEY;
-  createServer({ port, clientKey }).then(({ port: bound }) => console.log(`[devin-proxy] listening on http://127.0.0.1:${bound}`)).catch((err) => {
-    console.error(`[devin-proxy] failed to start: ${err.message}`);
+  createServer({ port, clientKey }).then(({ port: bound }) => log.info(`listening on http://127.0.0.1:${bound}`)).catch((err) => {
+    log.error(`failed to start: ${err.message}`);
     process.exit(1);
   });
 }
@@ -1684,12 +1711,12 @@ var isMain = typeof process !== "undefined" && !!process.argv[1] && import.meta.
 if (isMain) {
   const port = Number(process.env.DEVIN_CLAUDE_PORT) || 42100;
   const clientKey = process.env.DEVIN_CLAUDE_CLIENT_KEY || LOCAL_CLIENT_KEY;
-  createServer({ port, clientKey }).then(({ port: bound }) => console.log(`[devin-proxy] listening on http://127.0.0.1:${bound}`)).catch((err) => {
-    console.error(`[devin-proxy] failed to start: ${err.message}`);
+  createServer({ port, clientKey }).then(({ port: bound }) => log.info(`listening on http://127.0.0.1:${bound}`)).catch((err) => {
+    log.error(`failed to start: ${err.message}`);
     process.exit(1);
   });
   if (!getApiKey()) {
-    console.warn("[devin-proxy] warning: no Devin credential — run `claude-devin login`");
+    log.warn("no Devin credential — run `claude-devin login`");
   }
 }
 export {
