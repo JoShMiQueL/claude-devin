@@ -1,0 +1,24 @@
+# Dependabot keeps pinned versions current without weakening them.
+# Actions are pinned to SHA in workflows — Dependabot still proposes
+# bumps (it reads the version comment) and updates both the SHA and
+# the comment, so the pin stays immutable *and* stays fresh.
+version: 2
+updates:
+  # GitHub Actions — keeps the SHA pins moving on a weekly cadence.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "chore(ci)"
+
+  # npm (bun.lock) — surface security fixes and version bumps for the
+  # dev toolchain. Exact-pinned deps still get update PRs on releases.
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "chore(deps)"
