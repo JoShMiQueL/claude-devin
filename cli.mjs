@@ -201,10 +201,39 @@ async function cmdModels() {
   for (const m of res.body?.data ?? []) console.log(typeof m === "object" ? m.id : m)
 }
 
+/** Latest GitHub release tag (e.g. "v0.3.2"), or null if unreachable. */
+async function latestRelease() {
+  const res = await fetchJson(
+    "https://api.github.com/repos/JoShMiQueL/claude-devin/releases/latest",
+    { headers: { "User-Agent": "claude-devin" } },
+  )
+  return res.ok ? String(res.body?.tag_name ?? "").replace(/^v/, "") : null
+}
+
+/** Numeric semver-ish compare: is `latest` ahead of `current`? */
+function isNewer(latest, current) {
+  const pa = latest.split(".").map(Number)
+  const pb = current.split(".").map(Number)
+  for (let i = 0; i < 3; i++) {
+    if ((pa[i] || 0) !== (pb[i] || 0)) return (pa[i] || 0) > (pb[i] || 0)
+  }
+  return false
+}
+
+/** Version-update hint for status/doctor output. */
+async function updateHint() {
+  const latest = await latestRelease()
+  if (!latest) return ""
+  return isNewer(latest, VERSION)
+    ? "  → v" + latest + " available — run `claude-devin upgrade`"
+    : "  (latest)"
+}
+
 async function cmdStatus() {
   const up = await proxyUp()
   console.log(`proxy        : ${up ? `UP (${proxyBase()})` : `down (${proxyBase()})`}`)
   console.log(`credential   : ${hasCredentials() ? "present" : "MISSING"}`)
+  console.log(`version      : ${VERSION}${await updateHint()}`)
   if (up) {
     const res = await fetchJson(`${proxyBase()}/v1/models`, { headers: authHeaders() })
     const n = Array.isArray(res.body?.data) ? res.body.data.length : null
@@ -215,7 +244,7 @@ async function cmdStatus() {
 
 async function cmdDoctor() {
   console.log(`claude-devin doctor`)
-  console.log(`  version         : ${VERSION}`)
+  console.log(`  version         : ${VERSION}${await updateHint()}`)
   console.log(`  node            : ${process.version}`)
   console.log(`  claude          : ${commandExists("claude") ? "found" : "NOT FOUND"}`)
   console.log(`  proxy bundle    : ${existsSync(PROXY_BUNDLE) ? "present" : "MISSING"}`)
