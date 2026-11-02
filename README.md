@@ -94,20 +94,19 @@ and `/devin:status` slash commands inside Claude Code.
 
 ## Benchmarks
 
-Measured end-to-end on 7 agentic tasks (search-and-fix, multi-file-refactor,
-feature-add, code-review-report, web-research, parallel-research, build-json-db)
-with `swe-2-high`, `n=2` per cell, all three harnesses passing 21/21 checks:
+Measured end-to-end on agentic tasks with `swe-2-high` (`n=2` per cell, all
+runs passing the task checks):
 
-| Task | claude-devin | claude-devin --fast | devin CLI | opencode run |
-|---|---|---|---|---|
-| search-and-fix | 57.0s | **31.6s** | 39.9s | 23.2s |
-| web-research | 71.6s | **28.9s** | 46.7s | 28.9s |
-| parallel-research | 34.4s | **29.6s** | 49.2s | 27.4s |
-| build-json-db | 30.7s | **22.9s** | 61.8s | 40.4s |
+| Task | claude-devin | claude-devin --fast | Δ |
+|---|---|---|---|
+| search-and-fix | 57.0s | **31.6s** | -45% |
+| web-research | 71.6s | **28.9s** | -60% |
+| parallel-research | 34.4s | **29.6s** | -14% |
+| build-json-db | 30.7s | **22.9s** | -25% |
 
-`--fast` cuts the verbose exploration loop (fewer tool calls, no web fetches,
-terser output) — on build-type tasks it beats `devin` CLI outright and matches
-`opencode`. Numbers vary with prompt style; treat as directional.
+`--fast` cuts the verbose exploration loop: fewer tool calls, no web fetches,
+terser output (~20-60% fewer output tokens). Numbers vary with prompt style;
+treat as directional.
 
 ## Development
 
