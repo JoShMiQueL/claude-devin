@@ -46,6 +46,7 @@ itself is installed on first use via `claude-devin install-claude` (or
 | `claude-devin models` | List the model IDs your account can use. |
 | `claude-devin status` | Health check of the proxy + credential. |
 | `claude-devin doctor` | Diagnose missing deps / credentials / proxy. |
+| `claude-devin service <cmd>` | Manage the background proxy — `start`, `stop`, `restart`, `status`. |
 | `claude-devin install-claude` | Install the `claude` CLI if missing. |
 | `claude-devin logout` | Remove stored credentials. |
 | `claude-devin <anything else>` | Forwarded to `claude` verbatim. |
@@ -74,19 +75,31 @@ tokens** (see Benchmarks below). Works alongside any other `claude` flags.
 
 ```
 claude-devin
-  ├─ starts a local Anthropic-compatible proxy on 127.0.0.1:42100
-  │    └─ translates /v1/messages + /v1/models into Cascade gRPC
-  │       calls against server.codeium.com (reverse-engineered, same
-  │       as opencode-devin's src/protocol/)
+  ├─ ensures the background proxy is up on 127.0.0.1:42100
+  │    ├─ reuses a running service if one exists (instant)
+  │    └─ otherwise spawns it detached (survives the session)
+  │       → translates /v1/messages + /v1/models into Cascade gRPC
+  │          calls against server.codeium.com (reverse-engineered,
+  │          same as opencode-devin's src/protocol/)
   └─ launches `claude` with
         ANTHROPIC_BASE_URL = http://127.0.0.1:42100   (+ "/fast" when --fast)
         ANTHROPIC_API_KEY  = devin-claude-local
         ANTHROPIC_AUTH_TOKEN = devin-claude-local
 ```
 
+The proxy runs as a **persistent background service**: the first `claude-devin`
+invocation spawns it detached (pid + log in `~/.claude-devin/`), and every
+later invocation reuses it — catalog and auth caches stay warm, so subsequent
+runs start faster. Use `claude-devin service restart` after an `upgrade` to
+pick up a new bundle; `service stop` shuts it down.
+
 Claude Code never knows it isn't talking to Anthropic. Your Devin session
 token (obtained once via `login`) mints short-lived `user_jwt`s for the
 Cascade RPCs; the local key only protects the loopback proxy.
+
+An update check runs at most once per 24h on launch and prints a one-line
+notice to stderr when a newer release exists — `claude-devin upgrade` then
+pulls it.
 
 ## Claude Code plugin (optional)
 

@@ -124,37 +124,28 @@ async function proxyUp() {
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 
 // ---------------------------------------------------------------------------
-// proxy lifecycle
-
-let proxyProc = null
-function cleanup() {
-  if (proxyProc && !proxyProc.killed) proxyProc.kill("SIGTERM")
-}
-process.on("exit", cleanup)
-process.on("SIGINT", () => process.exit(130))
-process.on("SIGTERM", () => process.exit(143))
+// proxy lifecycle — the proxy always runs as a detached background service.
+// First `claude-devin` invocation spawns it; later ones reuse it for free.
 
 async function ensureProxy() {
   if (!existsSync(PROXY_BUNDLE)) {
     fail(`proxy bundle not found at ${PROXY_BUNDLE} — reinstall claude-devin`)
   }
-  if (await proxyUp()) return // already running (e.g. a dev `devin-claude start`)
+  if (await proxyUp()) return // service already running — reuse it
 
-  proxyProc = spawn(process.execPath, [PROXY_BUNDLE], {
-    stdio: ["ignore", "ignore", "pipe"],
+  // Spawn detached so the proxy survives this process (persistent service).
+  const out = openSync(PROXY_LOG, "a")
+  const child = spawn(process.execPath, [PROXY_BUNDLE], {
+    detached: true,
+    stdio: ["ignore", out, out],
     env: {
       ...process.env,
       DEVIN_CLAUDE_PORT: String(port()),
       DEVIN_CLAUDE_CLIENT_KEY: CLIENT_KEY,
     },
   })
-  let proxyErr = ""
-  proxyProc.stderr.on("data", (d) => (proxyErr += d))
-  proxyProc.on("exit", (code) => {
-    if (!shuttingDown && code !== 0 && code !== null) {
-      console.error(`claude-devin: proxy exited (${code})${proxyErr ? ` — ${proxyErr.slice(-400)}` : ""}`)
-    }
-  })
+  child.unref()
+  writeFileSync(PROXY_PID, String(child.pid))
 
   const deadline = Date.now() + 12_000
   while (Date.now() < deadline) {
@@ -165,12 +156,29 @@ async function ensureProxy() {
       fetch(`${proxyBase()}/v1/models`, { headers: authHeaders() }).catch(() => {})
       return
     }
-    if (proxyProc.exitCode !== null) break
+    if (child.exitCode !== null) break
   }
-  fail(`proxy did not come up on ${proxyBase()}${proxyErr ? ` — ${proxyErr.slice(-400)}` : ""}`)
+  fail(`proxy did not come up on ${proxyBase()} — see ${PROXY_LOG}`)
 }
 
-let shuttingDown = false
+// ---------------------------------------------------------------------------
+// update check — one GitHub fetch per 24h, cached on disk; stderr only.
+
+const UPDATE_CACHE = join(__dirname, ".last-update-check")
+
+async function maybeNotifyUpdate() {
+  try {
+    const last = existsSync(UPDATE_CACHE) ? Number(readFileSync(UPDATE_CACHE, "utf8").trim()) : 0
+    if (Date.now() - last < 24 * 3600 * 1000) return
+    writeFileSync(UPDATE_CACHE, String(Date.now()))
+    const latest = await latestRelease()
+    if (latest && isNewer(latest, VERSION)) {
+      console.error(`claude-devin: v${latest} available (you run ${VERSION}) — \`claude-devin upgrade\``)
+    }
+  } catch {
+    // Never block a session on the update check.
+  }
+}
 
 // ---------------------------------------------------------------------------
 // commands
@@ -292,31 +300,8 @@ async function cmdService(args) {
         console.log(`service already running on ${proxyBase()} (pid ${servicePid() ?? "?"})`)
         return
       }
-      if (!existsSync(PROXY_BUNDLE)) fail(`proxy bundle not found at ${PROXY_BUNDLE}`)
-      const out = openSync(PROXY_LOG, "a")
-      const child = spawn(process.execPath, [PROXY_BUNDLE], {
-        detached: true,
-        stdio: ["ignore", out, out],
-        env: {
-          ...process.env,
-          DEVIN_CLAUDE_PORT: String(port()),
-          DEVIN_CLAUDE_CLIENT_KEY: CLIENT_KEY,
-        },
-      })
-      child.unref()
-      writeFileSync(PROXY_PID, String(child.pid))
-      const deadline = Date.now() + 12_000
-      while (Date.now() < deadline) {
-        await sleep(250)
-        if (await proxyUp()) {
-          // Same warm-up as ensureProxy.
-          fetch(`${proxyBase()}/v1/models`, { headers: authHeaders() }).catch(() => {})
-          console.log(`service started — pid ${child.pid}, ${proxyBase()}, log ${PROXY_LOG}`)
-          return
-        }
-        if (child.exitCode !== null) break
-      }
-      fail(`service did not come up — see ${PROXY_LOG}`)
+      await ensureProxy()
+      console.log(`service started — pid ${servicePid() ?? "?"}, ${proxyBase()}, log ${PROXY_LOG}`)
       break
     }
     case "stop": {
@@ -404,6 +389,7 @@ async function cmdRun(claudeArgs) {
     process.exit(1)
   }
   await ensureProxy()
+  maybeNotifyUpdate() // fire-and-forget, cached 24h
 
   // claude resolves its API key from ANTHROPIC_API_KEY first (then
   // ANTHROPIC_AUTH_TOKEN / apiKeyHelper). A pre-existing ANTHROPIC_API_KEY in
@@ -432,9 +418,7 @@ async function cmdRun(claudeArgs) {
       process.env.CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY ?? "1",
   }
   const claude = spawn("claude", args, { stdio: "inherit", env })
-  shuttingDown = false
   const code = await new Promise((r) => claude.on("exit", r))
-  shuttingDown = true
   process.exit(code ?? 0)
 }
 
