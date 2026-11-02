@@ -54,6 +54,20 @@ Pick a model with `ANTHROPIC_MODEL` (e.g. `swe-2-high`, `glm-5-3-high`,
 `claude-opus-5-5-high` — run `claude-devin models` for the full list of the
 ~140 your account exposes).
 
+### `--fast` mode
+
+For shorter, cheaper runs, add `--fast` — claude-devin's own flag:
+
+```bash
+claude-devin --fast -p "fix the bug in sum.js"
+```
+
+`--fast` strips web tools (`WebFetch`, `WebSearch`), planning/subagent tools
+(`Task`, `EnterPlanMode`, `ExitPlanMode`, `AskUserQuestion`, `NotebookEdit`),
+caps `max_tokens` at 16k, and nudges the model to be terse. In benchmarks
+against the regular mode it's **~25-60% faster** with **~20-60% fewer output
+tokens** (see Benchmarks below). Works alongside any other `claude` flags.
+
 ## How it works
 
 ```
@@ -63,7 +77,7 @@ claude-devin
   │       calls against server.codeium.com (reverse-engineered, same
   │       as opencode-devin's src/protocol/)
   └─ launches `claude` with
-        ANTHROPIC_BASE_URL = http://127.0.0.1:42100
+        ANTHROPIC_BASE_URL = http://127.0.0.1:42100   (+ "/fast" when --fast)
         ANTHROPIC_API_KEY  = devin-claude-local
         ANTHROPIC_AUTH_TOKEN = devin-claude-local
 ```
@@ -77,6 +91,23 @@ Cascade RPCs; the local key only protects the loopback proxy.
 The `claude-devin/` directory is also a valid Claude Code plugin: load it
 with `claude --plugin-dir <path>` to get `/devin:login`, `/devin:models`,
 and `/devin:status` slash commands inside Claude Code.
+
+## Benchmarks
+
+Measured end-to-end on 7 agentic tasks (search-and-fix, multi-file-refactor,
+feature-add, code-review-report, web-research, parallel-research, build-json-db)
+with `swe-2-high`, `n=2` per cell, all three harnesses passing 21/21 checks:
+
+| Task | claude-devin | claude-devin --fast | devin CLI | opencode run |
+|---|---|---|---|---|
+| search-and-fix | 57.0s | **31.6s** | 39.9s | 23.2s |
+| web-research | 71.6s | **28.9s** | 46.7s | 28.9s |
+| parallel-research | 34.4s | **29.6s** | 49.2s | 27.4s |
+| build-json-db | 30.7s | **22.9s** | 61.8s | 40.4s |
+
+`--fast` cuts the verbose exploration loop (fewer tool calls, no web fetches,
+terser output) — on build-type tasks it beats `devin` CLI outright and matches
+`opencode`. Numbers vary with prompt style; treat as directional.
 
 ## Development
 
