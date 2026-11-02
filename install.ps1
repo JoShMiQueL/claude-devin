@@ -24,6 +24,16 @@ $Launcher = Join-Path $BinDir 'claude-devin.cmd'
 node "$AppDir\cli.mjs" %*
 "@ | Set-Content -Path $Launcher -Encoding ascii
 
+# POSIX-style launcher for Git Bash / MSYS2 — `claude-devin` with no
+# extension runs natively under bash instead of dispatching through cmd.exe.
+# Git Bash's node.exe accepts Windows paths fine; we just need forward slashes.
+$AppDirSh = $AppDir -replace '\\','/'
+$ShLauncher = Join-Path $BinDir 'claude-devin'
+@"
+#!/bin/sh
+exec node "$AppDirSh/cli.mjs" "`$@"
+"@ | Set-Content -Path $ShLauncher -Encoding ascii
+
 Write-Host ""
 Write-Host "[ok] installed to $AppDir"
 Write-Host "[ok] launcher at $Launcher"
