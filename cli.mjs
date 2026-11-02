@@ -463,7 +463,10 @@ async function cmdRun(claudeArgs) {
     ANTHROPIC_BASE_URL: proxyBase() + (fast ? "/fast" : ""),
     ANTHROPIC_API_KEY: CLIENT_KEY,
     ANTHROPIC_AUTH_TOKEN: CLIENT_KEY,
-    // Devin model by default — --model / ANTHROPIC_MODEL / settings still win.
+    // Devin model by default. ANTHROPIC_MODEL wins over settings files and
+    // ANTHROPIC_DEFAULT_MODEL — set it explicitly so `claude-devin` always
+    // uses the Devin backend unless the user passes --model themselves.
+    ANTHROPIC_MODEL: process.env.ANTHROPIC_MODEL ?? "swe-2-high",
     ANTHROPIC_DEFAULT_MODEL: process.env.ANTHROPIC_DEFAULT_MODEL ?? "swe-2-high",
     // Our proxy can't serve server-side auto-mode classifier checks — tell
     // claude to use its own (billed) classifier instead of warning about it.
