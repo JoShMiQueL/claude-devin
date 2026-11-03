@@ -4,6 +4,13 @@ All notable changes to this project are documented here. This file is generated
 and maintained by [release-please](https://github.com/googleapis/release-please)
 from conventional-commit history — do not edit by hand.
 
+## [0.5.1](https://github.com/JoShMiQueL/claude-devin/compare/v0.5.0...v0.5.1) (2026-11-03)
+
+
+### Documentation
+
+* document merge-commit release syncs and English PR convention ([2671e85](https://github.com/JoShMiQueL/claude-devin/commit/2671e85107538c69ba4f2c9a093295930daa14f4))
+
 ## [0.5.0](https://github.com/JoShMiQueL/claude-devin/compare/v0.4.0...v0.5.0) (2026-11-03)
 
 
