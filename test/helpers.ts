@@ -37,12 +37,12 @@ export const pricingMessage = (type: string, price: number, factor: number, cred
 /** One `ModelConfig` message, per the field numbers the catalog decoder reads. */
 export const modelConfig = (
   modelUid: string,
-  opts: { label?: string; disabled?: boolean; pricing?: Buffer[] } = {},
+  opts: { label?: string; disabled?: boolean; contextWindow?: number; pricing?: Buffer[] } = {},
 ) =>
   Buffer.concat([
     encodeString(1, opts.label ?? modelUid),
     encodeVarintField(4, opts.disabled ? 1 : 0),
-    encodeVarintField(18, 200_000),
+    encodeVarintField(18, opts.contextWindow ?? 200_000),
     encodeString(22, modelUid),
     ...(opts.pricing ?? []).map((p) => encodeMessage(32, p)),
   ])
