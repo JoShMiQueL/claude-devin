@@ -27,13 +27,17 @@ A lefthook pre-push hook runs lint + typecheck (~2s). It is installed via the
 ## Git rules (enforced — you cannot bypass them)
 
 - **Never push directly to `main` or `develop`.** Both are protected: no force
-  push, no deletion, squash-only merges, all CI checks required, admins
-  included. Everything goes through a PR.
+  push, no deletion, all CI checks required, admins included. Everything goes
+  through a PR.
 - **Base branch**: `feat/*`, `fix/*`, `chore/*`, `docs/*` → PR to **`develop`**.
-  Only `hotfix/*` and `release-please--*` may target `main` (CI `branch-gate`
-  fails the merge otherwise).
-- **Commit and PR title format: conventional commits, always.** The squash
-  commit message and `CHANGELOG.md` are generated from them:
+  Only `hotfix/*`, `release/*`, `release-please--*` and `develop` may target
+  `main` (CI `branch-gate` fails the merge otherwise).
+- **Merge style**: PRs to `develop` are **squash-merged** (one conventional
+  commit per PR). `release/*` sync PRs to `main` are merged with a **merge
+  commit** — squash would collapse every `feat:`/`fix:` into one
+  `release:`-titled commit that release-please ignores. See CONTRIBUTING.md.
+- **Commit and PR title format: conventional commits, always — and in English.**
+  The squash commit message and `CHANGELOG.md` are generated from them:
   `feat:` minor bump, `fix:`/`perf:` patch, `feat!:`/`BREAKING CHANGE:` major,
   `chore:`/`ci:`/`docs:`/`test:`/`build:` no bump.
 - **Use the PR template** (`.github/pull_request_template.md`) — fill every

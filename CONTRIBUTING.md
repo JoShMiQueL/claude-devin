@@ -7,24 +7,30 @@ main      ← releases only. Tags vX.Y.Z. Never work-in-progress.
   │
   ├── hotfix/<name>          → PR to main → squash → release-please tags
   ├── release-please--main   → bot PR to main → squash → tag + GitHub Release
+  ├── release/<name>         → PR to main → **merge commit** (develop sync)
   │
   └── develop         ← integration branch. Features live here.
-        ├── feat/<name>   → PR to develop
-        ├── fix/<name>    → PR to develop
-        └── chore/<name>  → PR to develop
+        ├── feat/<name>   → PR to develop → squash
+        ├── fix/<name>    → PR to develop → squash
+        └── chore/<name>  → PR to develop → squash
 ```
 
 **Rules enforced by CI + branch protection** (you can't bypass them):
 
-- `main` only accepts PRs whose source is `hotfix/*`, `release-please--*`, or
-  `develop`. A feature branch PRed straight to main fails the `branch-gate`
-  check and cannot merge. This keeps hotfixes and features from mixing —
-  `main` is always clean, releaseable history.
+- `main` only accepts PRs whose source is `hotfix/*`, `release/*`,
+  `release-please--*`, or `develop`. A feature branch PRed straight to main
+  fails the `branch-gate` check and cannot merge. This keeps hotfixes and
+  features from mixing — `main` is always clean, releaseable history.
 - `develop` accepts PRs from `feat/*`, `fix/*`, `chore/*`, `docs/*`.
-- Both branches: no direct push, no force push, no deletion, linear history,
-  all 4 CI checks (`verify` + `test` × 3 OS) green and branch up to date.
-- All merges are **squash** — one commit per PR. Branches auto-delete on
-  merge.
+- Both branches: no direct push, no force push, no deletion, all 4 CI checks
+  (`verify` + `test` × 3 OS) green and branch up to date.
+- **PRs to `develop` are squash-merged** — one conventional commit per PR.
+  Branches auto-delete on merge.
+- **`release/*` sync PRs to `main` are merged with a merge commit** — not
+  squash. Squash would collapse every `feat:`/`fix:` into one `release:`-titled
+  commit, which release-please treats as non-user-facing and skips. The merge
+  commit keeps each conventional commit as an ancestor of `main`, so
+  release-please can build a granular CHANGELOG and the right semver bump.
 - `enforce_admins` is on: these rules apply to the repo owner too.
 
 ## Everyday work (features, fixes, chores)
@@ -43,8 +49,13 @@ changelog by hand. Write conventional commits (`feat:`, `fix:`, `perf:`, …)
 and release-please does the rest.
 
 ```bash
-# 1. Merge develop into main when you're ready to ship a release
-gh pr create --base main --head develop --title "release: merge develop"
+# 1. Create a release/* sync branch off main and merge develop into it with a
+#    merge commit (NOT squash — see the rules above for why)
+git checkout -b release/sync-vX.Y.Z origin/main
+git merge --no-ff origin/develop
+git push -u origin release/sync-vX.Y.Z
+gh pr create --base main --head release/sync-vX.Y.Z --title "release: merge develop"
+#    CI green → merge with a merge commit.
 
 # 2. release-please watches pushes to main. After the merge it opens (or
 #    updates) a `release-please--main` PR containing:
@@ -62,6 +73,9 @@ git checkout develop && git merge main && git push
 
 **Commit type → bump**: `feat:` → minor, `fix:`/`perf:` → patch, `feat!:` /
 `BREAKING CHANGE:` → major. Types like `chore:`, `ci:`, `docs:` don't bump.
+
+**PR titles and bodies are written in English** — the repo, changelog and
+release notes are all English; keep them consistent.
 
 ### If the proposed version is wrong
 
