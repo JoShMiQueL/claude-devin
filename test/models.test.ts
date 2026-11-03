@@ -2,6 +2,7 @@
 
 import { clearCachedUserJwt } from "../src/protocol/auth.ts"
 import {
+  contextWindowFor,
   listAnthropicModels,
   ModelNotFoundError,
   resolveModelId,
@@ -22,12 +23,16 @@ afterEach(() => {
   clearCachedUserJwt()
 })
 
-const serveCatalog = (...uids: Array<string | { uid: string; disabled?: boolean }>) => {
+const serveCatalog = (...uids: Array<string | { uid: string; disabled?: boolean; contextWindow?: number }>) => {
   stubFetch({
     catalog: () =>
       new Response(
         catalogReply(
-          uids.map((u) => (typeof u === "string" ? modelConfig(u) : modelConfig(u.uid, { disabled: u.disabled }))),
+          uids.map((u) =>
+            typeof u === "string"
+              ? modelConfig(u)
+              : modelConfig(u.uid, { disabled: u.disabled, contextWindow: u.contextWindow }),
+          ),
         ),
         { status: 200 },
       ),
@@ -100,5 +105,25 @@ describe("resolveModelId", () => {
     expect(err).toBeInstanceOf(ModelNotFoundError)
     expect(err.validIds).toEqual([])
     expect(err.message).toContain("Model catalog unavailable")
+  })
+})
+
+describe("contextWindowFor", () => {
+  test("returns the catalog's declared window for the model", async () => {
+    serveCatalog(
+      { uid: "swe-2-high", contextWindow: 200_000 },
+      { uid: "claude-haiku-5-5", contextWindow: 128_000 },
+    )
+    await expect(contextWindowFor("claude-haiku-5-5", key(), uniqueHost())).resolves.toBe(128_000)
+  })
+
+  test("returns 0 for a model absent from the catalog", async () => {
+    serveCatalog("swe-2-high")
+    await expect(contextWindowFor("claude-opus-9-9", key(), uniqueHost())).resolves.toBe(0)
+  })
+
+  test("returns 0 when the catalog is unavailable", async () => {
+    stubFetch({ catalog: () => new Response("down", { status: 500 }) })
+    await expect(contextWindowFor("swe-2-high", key(), uniqueHost())).resolves.toBe(0)
   })
 })

@@ -14,7 +14,7 @@ import { resolve } from "node:path"
 import { pathToFileURL } from "node:url"
 
 import { getApiKey, loadCredentials, LOCAL_CLIENT_KEY } from "./auth.ts"
-import { getAnthropicModel, listAnthropicModels, ModelNotFoundError, resolveModelId } from "./models.ts"
+import { contextWindowFor, getAnthropicModel, listAnthropicModels, ModelNotFoundError, resolveModelId } from "./models.ts"
 import {
   anthropicToChat,
   chatToAnthropicResponse,
@@ -335,6 +335,12 @@ export async function createServer(options: ProxyServerOptions = {}): Promise<Pr
       throw err
     }
 
+    // Use the catalog's real context window for this model as the input cap —
+    // the previous flat 64k default let the input overflow smaller windows and
+    // under-used larger ones. Falls back to the constant when the catalog has
+    // no window for this UID.
+    const contextWindow = await contextWindowFor(modelUid, apiKey)
+
     if (fast) {
       if (Array.isArray(body.tools)) {
         body.tools = body.tools.filter((t) => !FAST_DROP_TOOLS.has(String((t as { name?: string }).name)))
@@ -357,7 +363,11 @@ export async function createServer(options: ProxyServerOptions = {}): Promise<Pr
       modelUid: converted.modelUid,
       messages: converted.messages,
       tools: converted.tools,
-      completionOpts: converted.completionOpts,
+      completionOpts: {
+        ...converted.completionOpts,
+        // Catalog-derived input cap (0 → encoder falls back to its default).
+        ...(contextWindow > 0 ? { maxInputTokens: contextWindow } : {}),
+      },
       signal: abort.signal,
     }
 
