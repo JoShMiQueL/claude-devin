@@ -80,6 +80,17 @@ export async function modelIds(apiKey: string, host?: string): Promise<string[]>
   return entries.map((entry) => entry.modelUid)
 }
 
+/**
+ * Declared context window for a model UID, from the account catalog.
+ * Returns 0 when the catalog is unavailable or the UID isn't listed — callers
+ * should fall back to a conservative default rather than fail.
+ */
+export async function contextWindowFor(modelUid: string, apiKey: string, host?: string): Promise<number> {
+  const catalog = await getCachedCatalog(apiKey, host)
+  const entry = catalog?.byUid.get(modelUid)
+  return entry && entry.contextWindow > 0 ? entry.contextWindow : 0
+}
+
 /** Model UID prefixes known to be served by Cascade. */
 const KNOWN_UID_RE = /^(claude|swe|glm)-/
 

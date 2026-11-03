@@ -1,20 +1,34 @@
 name: release-please
 
 # Runs on every push to main. When conventional-commit history has changed,
-# it opens/updates a `release/X.Y.Z` PR into main with a version bump +
-# generated CHANGELOG. Merging that PR creates the tag + GitHub Release.
-# Hotfixes and releases both flow through this — the release PR itself is a
-# `release/*` branch, which the CI branch-gate already allows into main.
+# it opens/updates a release PR into main (a `release-please--*` branch) with
+# a version bump + generated CHANGELOG. Merging that PR creates the tag +
+# GitHub Release. Hotfixes and releases both flow through this — the
+# branch-gate already allows `release-please--*` branches into main.
 on:
   push:
     branches: [main]
+  # Lets you force a release check from the Actions tab without pushing to
+  # main — e.g. after enabling a permission or fixing a failed run.
+  workflow_dispatch:
 
 permissions:
   contents: write
   pull-requests: write
 
+# Serialize runs: a manual dispatch and a push-triggered run both compute the
+# same release candidate and force-push the same release-please--* branch, so
+# they must not overlap.
+concurrency:
+  group: release-please
+  cancel-in-progress: false
+
 jobs:
   release-please:
+    # Guard: only run on main. A manual dispatch can select any ref, and the
+    # workflow executes the copy of this file on that ref — restricting to
+    # main prevents running a divergent write-scoped workflow from a branch.
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:
       - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7  # v5.0.0
