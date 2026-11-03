@@ -4,6 +4,19 @@ All notable changes to this project are documented here. This file is generated
 and maintained by [release-please](https://github.com/googleapis/release-please)
 from conventional-commit history — do not edit by hand.
 
+## [0.5.0](https://github.com/JoShMiQueL/claude-devin/compare/v0.4.0...v0.5.0) (2026-11-03)
+
+
+### Features
+
+* isolated service instances via --instance / DEVIN_CLAUDE_INSTANCE ([#14](https://github.com/JoShMiQueL/claude-devin/issues/14)) ([b199ece](https://github.com/JoShMiQueL/claude-devin/commit/b199ecec7ed1b422ff6ba86b66b53a5a34b8eadf))
+
+
+### Bug Fixes
+
+* **cli:** use readSync for log-follow reads so service logs actually tails ([#13](https://github.com/JoShMiQueL/claude-devin/issues/13)) ([a889503](https://github.com/JoShMiQueL/claude-devin/commit/a8895035d3bfb307485e6245566eccc687ff7253))
+* **proxy:** use catalog contextWindow for maxInputTokens ([#15](https://github.com/JoShMiQueL/claude-devin/issues/15)) ([d445c25](https://github.com/JoShMiQueL/claude-devin/commit/d445c25c6f297d4f11dc7086b2b63c17db18893d))
+
 ## [0.4.0](https://github.com/JoShMiQueL/claude-devin/releases/tag/v0.4.0) (2026-10-31)
 
 ### Features
