@@ -32,8 +32,47 @@ const CLIENT_KEY = "devin-claude-local"
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const PROXY_BUNDLE = join(__dirname, "proxy-bundle.mjs")
-const PROXY_PID = join(__dirname, "proxy.pid")
-const PROXY_LOG = join(__dirname, "proxy.log")
+
+// --- service instances -------------------------------------------------------
+// The "main" instance is the shared default: every `claude-devin` run reuses
+// it (port 42100, proxy.pid/proxy.log). `--instance <name>` (or
+// DEVIN_CLAUDE_INSTANCE) runs an isolated service instead — its own port,
+// pid and log — so several claude sessions can coexist without sharing state.
+// An explicit DEVIN_CLAUDE_PORT always wins over the derived port.
+
+/** FNV-1a-ish hash → a stable per-name port offset. */
+function nameOffset(name) {
+  let h = 0x811c9dc5
+  for (const ch of String(name)) {
+    h ^= ch.codePointAt(0)
+    h = Math.imul(h, 0x01000193) >>> 0
+  }
+  return h % 500 // ports 42101–42600 stay clear of the main 42100
+}
+
+const VALID_INSTANCE = /^[A-Za-z0-9_-]+$/
+
+function resolveInstance() {
+  const args = process.argv.slice(2)
+  let name = process.env.DEVIN_CLAUDE_INSTANCE ?? null
+  const i = args.indexOf("--instance")
+  if (i >= 0) name = args[i + 1] ?? null
+  if (name !== null && !VALID_INSTANCE.test(name)) {
+    fail(`--instance expects [A-Za-z0-9_-], got '${name}'`)
+  }
+  const isolated = name !== null && name !== "main"
+  const suffix = isolated ? `-${name}` : ""
+  return {
+    name: isolated ? name : "main",
+    port: Number(process.env.DEVIN_CLAUDE_PORT) || (isolated ? DEFAULT_PORT + 1 + nameOffset(name) : DEFAULT_PORT),
+    pidFile: join(__dirname, `proxy${suffix}.pid`),
+    logFile: join(__dirname, `proxy${suffix}.log`),
+  }
+}
+
+const INSTANCE = resolveInstance()
+const PROXY_PID = INSTANCE.pidFile
+const PROXY_LOG = INSTANCE.logFile
 
 // --- paths (keep in sync with src/devin-anthropic-proxy/auth.ts) ---
 const configRoot = process.env.XDG_CONFIG_HOME || join(homedir(), ".config")
@@ -80,18 +119,24 @@ Everything else is forwarded to \`claude\` verbatim — including claude's own
   claude-devin --model glm-5-3-high -p "hi"
   --fast              Shorter answers: strips web/plan/subagent tools, terser style.
   --shell S           Shell for claude's tools: bash | powershell | auto (default auto).
+  --instance NAME     Run against an isolated proxy service named NAME instead of
+                      the shared "main" one — its own port, pid and log. Lets
+                      several claude sessions run side by side without sharing
+                      state. Defaults to the shared main service.
 
 Environment:
   DEVIN_LLM_API_KEY   Devin session token (overrides the stored credential).
   ANTHROPIC_MODEL     Model UID (claude's --model flag wins).
-  DEVIN_CLAUDE_PORT   Proxy port (default ${DEFAULT_PORT}).
+  DEVIN_CLAUDE_PORT   Proxy port (default ${DEFAULT_PORT} for the main service;
+                      isolated instances get a per-name port unless this is set).
+  DEVIN_CLAUDE_INSTANCE  Default instance name (like --instance).
   XDG_CONFIG_HOME     Config root (default ~/.config).
 `
 
 // ---------------------------------------------------------------------------
 // helpers
 
-const port = () => Number(process.env.DEVIN_CLAUDE_PORT) || DEFAULT_PORT
+const port = () => INSTANCE.port
 const proxyBase = () => `http://127.0.0.1:${port()}`
 const authHeaders = () => ({ "x-api-key": CLIENT_KEY })
 
@@ -304,7 +349,15 @@ function servicePid() {
 }
 
 async function cmdService(args) {
-  const sub = args[0] ?? "status"
+  // `--instance NAME` (and the value) is consumed by resolveInstance() from
+  // process.argv; drop it here so `service --instance x start` reads `start`
+  // as the subcommand rather than the flag.
+  const cleaned = []
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] === "--instance") { i++; continue }
+    cleaned.push(args[i])
+  }
+  const sub = cleaned[0] ?? "status"
   switch (sub) {
     case "start": {
       if (await proxyUp()) {
@@ -341,6 +394,7 @@ async function cmdService(args) {
       const pid = servicePid()
       const up = await proxyUp()
       console.log(`service      : ${up ? `UP (${proxyBase()})` : "down"}`)
+      console.log(`instance     : ${INSTANCE.name}`)
       console.log(`pid          : ${pid ?? "none"}`)
       if (existsSync(PROXY_LOG)) console.log(`log          : ${PROXY_LOG}`)
       break
@@ -351,7 +405,7 @@ async function cmdService(args) {
         console.log(`no log yet at ${PROXY_LOG}`)
         return
       }
-      const tailLines = Number(args[1]) || 50
+      const tailLines = Number(cleaned[1]) || 50
       const content = readFileSync(PROXY_LOG, "utf8")
       const lines = content.split(/\r?\n/)
       console.log(lines.slice(-tailLines).join("\n"))
@@ -436,8 +490,14 @@ async function cmdRun(claudeArgs) {
   // claude-devin's own flags — stripped before forwarding to claude.
   const fast = claudeArgs.includes("--fast")
   const shellIdx = claudeArgs.indexOf("--shell")
+  const instIdx = claudeArgs.indexOf("--instance")
   const shellArg = shellIdx >= 0 ? claudeArgs[shellIdx + 1] : null
-  const args = claudeArgs.filter((a, i) => a !== "--fast" && i !== shellIdx && i !== shellIdx + 1)
+  // Strip claude-devin-only flags (and their values) before forwarding to claude.
+  const dropIdx = new Set()
+  for (const i of [shellIdx, instIdx]) {
+    if (i >= 0) { dropIdx.add(i); dropIdx.add(i + 1) }
+  }
+  const args = claudeArgs.filter((a, i) => a !== "--fast" && !dropIdx.has(i))
   if (shellIdx >= 0 && !["bash", "powershell", "pwsh", "auto"].includes(shellArg ?? "")) {
     fail(`--shell expects bash|powershell|auto, got '${shellArg ?? "(missing)"}'`)
   }
@@ -453,6 +513,7 @@ async function cmdRun(claudeArgs) {
       session: sessionId,
       pid: process.pid,
       fast,
+      instance: INSTANCE.name,
       args: args.join(" ").slice(0, 200) || "(interactive)",
       v: VERSION,
     }),
