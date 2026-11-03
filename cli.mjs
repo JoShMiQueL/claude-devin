@@ -11,7 +11,7 @@
  */
 
 import { spawn, spawnSync } from "node:child_process"
-import { existsSync, mkdirSync, writeFileSync, readFileSync, renameSync, openSync, closeSync, unlinkSync, statSync } from "node:fs"
+import { existsSync, mkdirSync, writeFileSync, readFileSync, readSync, renameSync, openSync, closeSync, unlinkSync, statSync } from "node:fs"
 import { homedir } from "node:os"
 import { dirname, join, resolve } from "node:path"
 import { fileURLToPath, pathToFileURL } from "node:url"
@@ -366,7 +366,7 @@ async function cmdService(args) {
           if (size > offset) {
             const fd = openSync(PROXY_LOG, "r")
             const buf = Buffer.alloc(size - offset)
-            readFileSync(fd, buf, 0, buf.length, offset)
+            readSync(fd, buf, 0, buf.length, offset)
             closeSync(fd)
             process.stdout.write(buf.toString("utf8"))
             offset = size
