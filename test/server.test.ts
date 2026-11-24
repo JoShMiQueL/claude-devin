@@ -4,7 +4,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import type { Server } from "node:http"
 
-import { clearCachedUserJwt } from "../src/protocol/auth.ts"
+import { clearCachedUserJwt } from "devin-core"
 import { createServer } from "../src/devin-anthropic-proxy/server.ts"
 import { LOCAL_CLIENT_KEY } from "../src/devin-anthropic-proxy/auth.ts"
 import { catalogReply, modelConfig, realFetch, stubFetch } from "./helpers.ts"

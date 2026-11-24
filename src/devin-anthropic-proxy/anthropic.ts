@@ -19,7 +19,7 @@ import {
   type ChatToolDefinition,
   type CompletionOptions,
   type StreamChatRequest,
-} from "../protocol/chat.ts"
+} from "devin-core"
 
 /**
  * Test seam: replace the chat-event source without touching the network.

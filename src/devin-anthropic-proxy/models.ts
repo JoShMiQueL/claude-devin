@@ -5,8 +5,9 @@
  * account may use; this file only re-shapes and resolves IDs. Node ≥18 ESM.
  */
 
-import { getCachedCatalog, type ModelCatalogEntry } from "../protocol/catalog.ts"
-import { DEFAULT_API_SERVER, DEFAULT_RELEASED_MS, PROVIDER_ID } from "../constants.ts"
+import { getCachedCatalog, type ModelCatalogEntry } from "devin-core"
+import { DEFAULT_API_SERVER } from "devin-core"
+import { DEFAULT_RELEASED_MS, PROVIDER_ID } from "../constants.ts"
 
 export interface AnthropicModel {
   id: string

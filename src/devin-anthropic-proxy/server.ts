@@ -23,8 +23,8 @@ import {
   streamChatEventsAsAnthropic,
   type AnthropicRequest,
 } from "./anthropic.ts"
-import { getCachedCatalog } from "../protocol/catalog.ts"
-import { CloudChatError, type StreamChatRequest } from "../protocol/chat.ts"
+import { getCachedCatalog } from "devin-core"
+import { CloudChatError, type StreamChatRequest } from "devin-core"
 
 const DEFAULT_PORT = 42_100
 const MAX_BODY_BYTES = 32 * 1024 * 1024
