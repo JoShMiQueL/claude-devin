@@ -15,10 +15,10 @@ import { createServer, type Server } from "node:http"
 import type { AddressInfo } from "node:net"
 import { createInterface } from "node:readline"
 
-import { CALLBACK_PATH } from "../constants.ts"
-import { exchangeCode } from "../auth/exchange.ts"
-import { challengeFor, generateState, generateVerifier } from "../auth/pkce.ts"
-import { authorizeUrl } from "../auth/url.ts"
+import { CALLBACK_PATH } from "devin-core"
+import { exchangeCode } from "devin-core"
+import { challengeFor, generateState, generateVerifier } from "devin-core"
+import { authorizeUrl } from "devin-core"
 import { saveCredentials, type StoredCredential } from "./auth.ts"
 
 /** How long the loopback listener waits for the browser redirect. */

@@ -1,6 +1,6 @@
 ﻿import { afterEach, describe, expect, test } from "bun:test"
 
-import { clearCachedUserJwt } from "../src/protocol/auth.ts"
+import { clearCachedUserJwt } from "devin-core"
 import {
   contextWindowFor,
   listAnthropicModels,
