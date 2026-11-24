@@ -4,6 +4,13 @@ All notable changes to this project are documented here. This file is generated
 and maintained by [release-please](https://github.com/googleapis/release-please)
 from conventional-commit history — do not edit by hand.
 
+## [0.5.2](https://github.com/JoShMiQueL/claude-devin/compare/v0.5.1...v0.5.2) (2026-11-24)
+
+
+### Code Refactoring
+
+* consume devin-core for protocol/auth ([#26](https://github.com/JoShMiQueL/claude-devin/issues/26)) ([5a5fc09](https://github.com/JoShMiQueL/claude-devin/commit/5a5fc09c4f858e6f4a6ef4b58ef31d2e20ef077f))
+
 ## [0.5.1](https://github.com/JoShMiQueL/claude-devin/compare/v0.5.0...v0.5.1) (2026-11-03)
 
 
