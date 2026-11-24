@@ -135,9 +135,10 @@ treat as directional.
 
 ## Development
 
-Source lives under `src/` (TypeScript, vendored from `opencode-devin`):
-`src/protocol/` = Cascade wire protocol, `src/auth/` = Devin PKCE auth,
-`src/devin-anthropic-proxy/` = Anthropic↔Cascade adapter + HTTP server.
+Source lives under `src/` (TypeScript). `src/protocol/` and `src/auth/` were
+replaced by the shared [`devin-core`](https://github.com/JoShMiQueL/devin-core)
+library — `src/devin-anthropic-proxy/` = Anthropic↔Cascade adapter + HTTP server
+is what remains local.
 
 Rebuild the single-file proxy bundle (bundled with `bun`):
 
@@ -148,3 +149,16 @@ bun build src/devin-anthropic-proxy/bundle-entry.ts --target node --outfile prox
 ## License
 
 MIT
+
+## Ecosystem
+
+| Package | Role |
+| --- | --- |
+| `devin-core` | Cascade wire + PKCE auth + catalog — consumed here as `devin-core@^0.0.3` |
+| `devin-engine` | guarded-retry pipeline (embeddable) |
+| `devin-proxy` | standalone OpenAI-compatible proxy |
+| `devin-proxy-py` | Python reference implementation |
+| `opencode-devin` | sibling OpenCode v2 plugin — same core |
+| **`claude-devin`** (this) | Claude/Anthropic-compatible surface |
+
+Topic `devin-ecosystem` groups the repos on GitHub.
