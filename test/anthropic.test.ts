@@ -12,7 +12,7 @@ import {
   type AnthropicRequest,
   type AnthropicSseEvent,
 } from "../src/devin-anthropic-proxy/anthropic.ts"
-import type { ChatEvent, StreamChatRequest } from "../src/protocol/chat.ts"
+import type { ChatEvent, StreamChatRequest } from "devin-core"
 
 const chatRequest: StreamChatRequest = { apiKey: "k", modelUid: "claude-test", messages: [] }
 
