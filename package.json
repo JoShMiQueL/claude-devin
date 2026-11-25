@@ -1,55 +1,55 @@
 {
-  "$schema": "https://json.schemastore.org/package.json",
-  "name": "claude-devin",
-  "version": "0.5.2",
-  "description": "Run Claude Code on your Devin subscription â€” drop-in `claude` wrapper with a local Anthropic-compatible proxy",
-  "type": "module",
-  "bin": {
-    "claude-devin": "./cli.mjs"
-  },
-  "files": [
-    "cli.mjs",
-    "proxy-bundle.mjs",
-    "src/"
-  ],
-  "scripts": {
-    "build": "bun build src/devin-anthropic-proxy/bundle-entry.ts --target node --outfile proxy-bundle.mjs",
-    "lint": "oxlint -c .oxlintrc.json --deny-warnings src test",
-    "typecheck": "bun check",
-    "test": "bun test",
-    "verify": "bun run lint && bun run typecheck && bun test",
-    "prepare": "lefthook install || true"
-  },
-  "keywords": [
-    "claude-code",
-    "devin",
-    "cognition",
-    "anthropic",
-    "proxy",
-    "cascade",
-    "windsurf"
-  ],
-  "license": "MIT",
-  "author": {
-    "name": "JoShMiQueL",
-    "email": "joshmiquel.cs@gmail.com"
-  },
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/JoShMiQueL/claude-devin.git"
-  },
-  "homepage": "https://github.com/JoShMiQueL/claude-devin#readme",
-  "bugs": "https://github.com/JoShMiQueL/claude-devin/issues",
-  "devDependencies": {
-    "@types/bun": "1.4.4",
-    "lefthook": "2.2.2",
-    "oxlint": "1.90.0",
-    "typescript": "7.0.2"
-  },
-  "engines": {
-    "node": ">=18"
-  },
-  "dependencies": {
-    "devin-core": "^0.0.3"
-  }
+ "$schema": "https://json.schemastore.org/package.json",
+ "name": "claude-devin",
+ "version": "0.5.2",
+ "description": "Run Claude Code on your Devin subscription â€” drop-in `claude` wrapper with a local Anthropic-compatible proxy",
+ "type": "module",
+ "bin": {
+  "claude-devin": "./cli.mjs"
+ },
+ "files": [
+  "cli.mjs",
+  "proxy-bundle.mjs",
+  "src/"
+ ],
+ "scripts": {
+  "build": "bun build src/devin-anthropic-proxy/bundle-entry.ts --target node --outfile proxy-bundle.mjs",
+  "lint": "oxlint -c .oxlintrc.json --deny-warnings src test",
+  "typecheck": "tsc --noEmit",
+  "test": "bun test",
+  "verify": "bun run lint && bun run typecheck && bun test",
+  "prepare": "lefthook install || true"
+ },
+ "keywords": [
+  "claude-code",
+  "devin",
+  "cognition",
+  "anthropic",
+  "proxy",
+  "cascade",
+  "windsurf"
+ ],
+ "license": "MIT",
+ "author": {
+  "name": "JoShMiQueL",
+  "email": "joshmiquel.cs@gmail.com"
+ },
+ "repository": {
+  "type": "git",
+  "url": "git+https://github.com/JoShMiQueL/claude-devin.git"
+ },
+ "homepage": "https://github.com/JoShMiQueL/claude-devin#readme",
+ "bugs": "https://github.com/JoShMiQueL/claude-devin/issues",
+ "devDependencies": {
+  "@types/bun": "1.4.4",
+  "lefthook": "2.2.2",
+  "oxlint": "1.90.0",
+  "typescript": "^7.0.2"
+ },
+ "engines": {
+  "node": ">=18"
+ },
+ "dependencies": {
+  "devin-core": "^0.0.3"
+ }
 }
